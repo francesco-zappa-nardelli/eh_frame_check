@@ -1,21 +1,21 @@
-                          eh_frame_check.py
-                          *****************
+eh_frame_check.py
+=================
 
 Author: Francesco Zappa Nardelli
 
 Last revision of this README: June 2nd, 2016.
 
-eh_frame_check.py is a simple tool that attempts to _validate_ the
+`eh_frame_check.py` is a simple tool that attempts to _validate_ the
 eh_frame tables.  It is limited to return addresses for now.  It step
 through the program with gdb, checks the call and ret instructions to
-build a concrete view of the stack frames, evaluate the eh_frame infos
+build a concrete view of the stack frames, evaluate the `.eh_frame` infos
 with the current register values, and compares them.  Mismatches are
 reported.
 
 Setup
-=====
+-----
 
-eh_frame_check.py relies on gdb with the python-2.7 interpreter
+`eh_frame_check.py` relies on gdb with the python-2.7 interpreter
 compiled in.  To check:
 
 ```$ gdb
@@ -30,16 +30,16 @@ In case, the magic incantation to recompile gdb is:
 - make; make install
 
 Invocation
-==========
+----------
 
 ```$ gdb -q -x eh_frame_check.py <path_to_binary>
 ```
 
-At the beginning of the script the options "verbose" and "dbg_eval"
+At the beginning of the script the options `verbose` and `dbg_eval`
 can be set to true to obtain respectively a trace of the analysed
 instructions and of the dwarf expression evaluator.  
 
-A sample trace with "verbose" enabled:
+A sample trace with `verbose` enabled:
 
 ```$ gdb -q -x eh_frame_check.py ~/tmp/foo3
 Reading symbols from /home/zappa/tmp/foo3...done.
@@ -76,7 +76,7 @@ tabels and the expected one, together with the IP at which the
 mismatch is detected.
 
 Notes
-=====
+-----
 
 The concrete view of the stack frame is built by:
 
