@@ -13,13 +13,14 @@ with the current register values, and compares them.  Mismatches are
 reported.
 
 Setup
-*****
+=====
 
 eh_frame_check.py relies on gdb with the python-2.7 interpreter
 compiled in.  To check:
 
-$ gdb
+```$ gdb
 (gdb) python print (sys.version)
+````
 
 In case, the magic incantation to recompile gdb is:
 
@@ -29,9 +30,10 @@ In case, the magic incantation to recompile gdb is:
 - make; make install
 
 Invocation
-**********
+==========
 
-$ gdb -q -x eh_frame_check.py <path_to_binary>
+```$ gdb -q -x eh_frame_check.py <path_to_binary>
+```
 
 At the beginning of the script the options "verbose" and "dbg_eval"
 can be set to true to obtain respectively a trace of the analysed
@@ -39,7 +41,7 @@ instructions and of the dwarf expression evaluator.
 
 A sample trace with "verbose" enabled:
 
-$ gdb -q -x eh_frame_check.py ~/tmp/foo3
+```$ gdb -q -x eh_frame_check.py ~/tmp/foo3
 Reading symbols from /home/zappa/tmp/foo3...done.
 INIT: ['0x-1', '0x7fffffffe1f8']
 => 0x400530 (sub)
@@ -64,6 +66,7 @@ CALL: ['0x-1', '0x7fffffffe1f8', '0x7fffffffe1d8']
  | Table Mismatch at IP: 0x7ffff7df04e0
  | eh_frame entry from : 0x4005f0 : ({16: RegisterRule(OFFSET, -8), 'pc': 4195824, 'cfa': CFARule(reg=7, offset=8, expr=None)}, ([16], 16))
 Aborting...
+````
 
 The INIT/CALL/RET tags show the expected locations of the return
 addresses on the stack after each call/ret instruction.  The =>
@@ -72,8 +75,8 @@ The error message lists the return address computed from the eh_frame
 tabels and the expected one, together with the IP at which the
 mismatch is detected.
 
-NOTES
-*****
+Notes
+=====
 
 The concrete view of the stack frame is built by:
 
@@ -81,13 +84,18 @@ The concrete view of the stack frame is built by:
 
 - intercept RET: a return address is popped by the stack
 
+
+Attic
+-----
+
 - intercept PUSH imm(%rip), as in (from objdump -d /bin/true):
 
 Disassembly of section .plt:
 
+````
 0000000000401030 <__uflow@plt-0x10>:
   401030:       ff 35 d2 4f 20 00       pushq  0x204fd2(%rip)        # 606008 <__ctype_b_loc@plt+0x204cd8>
   401036:       ff 25 d4 4f 20 00       jmpq   *0x204fd4(%rip)        # 606010 <__ctype_b_loc@plt+0x204ce0>
+````
 
-PUSH + JMP here are implementing an ad-hoc call.
 
