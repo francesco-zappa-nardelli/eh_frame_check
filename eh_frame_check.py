@@ -40,8 +40,10 @@ verbose = True
 dbg_eval = False
 
 # Setup pyelftools
+myPath = '/home/raph/Documents/TRAVAIL/X/Project/pyelftools/'
+# myPath = '/home/zappa/repos/zappa/dwarf/src-fzn/pyelftools/'
 #sys.path[0:0] = ['/home/zappa/repos/zappa/dwarf/src-fzn/pyelftools/']
-sys.path.insert(1, '/home/zappa/repos/zappa/dwarf/src-fzn/pyelftools/')
+sys.path.insert(1, myPath)
 
 from elftools.elf.elffile import ELFFile
 from elftools.elf.sections import SymbolTableSection
@@ -57,7 +59,7 @@ from elftools.dwarf.descriptions import (
     )
 from elftools.dwarf.dwarf_expr import GenericExprVisitor
 
-sys.path.insert(1, '/home/zappa/repos/zappa/dwarf/src-fzn/pyelftools/scripts')
+# using std intervaltree and storagecontainers
 from intervaltree import Interval, IntervalTree
 
 ARCH = '<unknown>'
@@ -67,7 +69,7 @@ def pyelftools_init():
     # This should be fixed in get_machine_arch
     if ARCH == '<unknown>':
         ARCH = 'power'
-    set_global_machine_arch(ARCH) 
+    set_global_machine_arch(ARCH)
 
 # Aux functions
 def abort():
@@ -133,7 +135,7 @@ def format_hex(addr, fieldsize=None, fullhex=False, lead0x=True, alternate=False
 
 def dump_eh_frame_table_entry(entry):
     """ dumps an interpreted EH_CFI entry
-    """ 
+    """
     if isinstance(entry, CIE):
         emitline('\n%08x %s %s CIE "%s" cf=%d df=%d ra=%d' % (
             entry.offset,
@@ -154,25 +156,25 @@ def dump_eh_frame_table_entry(entry):
             format_hex(entry['initial_location'] + entry['address_range'],
                              fullhex=True, lead0x=False)))
         ra_regnum = entry.cie['return_address_register']
-        
+
     # Print the heading row for the decoded table
     emit('   LOC')
     emit('  ' if entry.structs.address_size == 4 else '          ')
     emit(' CFA      ')
-        
+
     # Decode the table nad look at the registers it describes.
     # We build reg_order here to match readelf's order. In particular,
     # registers are sorted by their number, and the register matching
     # ra_regnum is always listed last with a special heading.
     decoded_table = entry.get_decoded()
-        
+
     # print ("\n\nDecoded table:\n"+(str(decoded_table))+"\n\n")
 
     reg_order = sorted(ifilter(
         lambda r: r != ra_regnum,
         decoded_table.reg_order))
     if len(decoded_table.reg_order):
-            
+
         # Headings for the registers
         for regnum in reg_order:
             emit('%-6s' % describe_reg_name(regnum))
@@ -183,11 +185,11 @@ def dump_eh_frame_table_entry(entry):
         reg_order.append(ra_regnum)
     else:
         emitline()
-                
+
     for line in decoded_table.table:
         emit(format_hex(line['pc'], fullhex=True, lead0x=False))
         emit(' %-9s' % describe_CFI_CFA_rule(line['cfa']))
-                    
+
         for regnum in reg_order:
             if regnum in line:
                 s = describe_CFI_register_rule(line[regnum])
@@ -200,7 +202,7 @@ def dump_eh_frame_table_entry(entry):
 # def dump_eh_frame_line(line, reg_order):
 #     emit(format_hex(line['pc'], fullhex=True, lead0x=False))
 #     emit(' %-9s' % describe_CFI_CFA_rule(line['cfa']))
-                    
+
 #     for regnum in reg_order:
 #         if regnum in line:
 #             s = describe_CFI_register_rule(line[regnum])
@@ -222,8 +224,8 @@ def memorize_eh_frame_table_entry(eh_frame_table, entry):
             top = next_line['pc']
         else:
             top = entry['initial_location'] + entry['address_range']
-        eh_frame_table[base:top] = (line, 
-                                    (decoded_entry.reg_order, 
+        eh_frame_table[base:top] = (line,
+                                    (decoded_entry.reg_order,
                                      entry.cie['return_address_register']))
 
 def memorize_eh_frame_table(dwarfinfo):
@@ -244,19 +246,19 @@ def search_eh_frame_table(eh_frame_table, address):
 def read_eh_frame_table(elffile):
     """ return the decoded eh_frame_table
     """
-    if not elffile.has_eh_frame_info():
-        error ('No eh_frame table in the binary: '+ filename) 
+    if not elffile.get_section_by_name('.eh_frame'):
+        error ('No eh_frame table in the binary: '+ filename)
     dwarfinfo = elffile.get_dwarf_info()
     return dwarfinfo
 
 def memorize_symbol_table(elffile, symbol_table, file_name, base=0):
     if file_name in symbol_table['files']:
         return
-        
+
     for section in elffile.iter_sections():
         if not isinstance(section, SymbolTableSection):
             continue
-            
+
         if section['sh_entsize'] == 0:
             emit("Symbol table '%s' has a sh_entsize of zero." % (section.name))
             continue
@@ -266,17 +268,17 @@ def memorize_symbol_table(elffile, symbol_table, file_name, base=0):
                 start = symbol['st_value']+base
                 end = symbol['st_value']+symbol['st_size']+base
                 if end != start:
-                    symbol_table['table'][start:end] = symbol.name 
+                    symbol_table['table'][start:end] = symbol.name
 
     symbol_table['files'].append(file_name)
-        
+
 def dump_symbol_table(symbol_table):
-    print "*** dump symbol table"
+    print ("*** dump symbol table")
     for f in symbol_table['files']:
         print (" :: "+f)
     for s in sorted(symbol_table['table']):
         print (" {0}-{1}: {2}".format(hex(s.begin), hex(s.end), s.data))
-    
+
 
 def get_function_name(symbol_table, linked_files, ip):
     # print ("* looking for "+hex(ip))
@@ -287,26 +289,26 @@ def get_function_name(symbol_table, linked_files, ip):
             lib_name = linked_files[ip].pop().data
             if lib_name in symbol_table['files']:
                 return '_unknown @ [{0}]'.format(lib_name)
-            
+
             lib_base = linked_files[ip].pop().begin
             print ("* loading symbol table for {0} at {1} ".format(lib_name, hex(lib_base)))
             with open(lib_name, 'rb') as f:
-#                print "* opened"
+#                print ("* opened")
                 elffile = ELFFile(f)
-#                print "* got the elfile"
+#                print ("* got the elfile")
                 memorize_symbol_table(elffile, symbol_table, lib_name, lib_base)
-#                print "* memorization done"
-#            print "* file closed"
+#                print ("* memorization done")
+#            print ("* file closed")
 #             dump_symbol_table(symbol_table)
             try:
                 return symbol_table[ip].pop().data
             except:
                 return '_unknown @ [{0}]'.format(lib_name)
-        
+
         except:
             return '_unknown @ [???]'
 
-        
+
 def get_function_name_OLD(symbol_table, linked_files, ip):
     try:
         return symbol_table[ip].pop().data
@@ -316,8 +318,8 @@ def get_function_name_OLD(symbol_table, linked_files, ip):
             return '_unknown @ '+lib_name
         except:
             return '_unknown @ [???]'
-            
-    
+
+
 
 
 # arch specific
@@ -341,12 +343,12 @@ def reg_ip():
         return '$pc'
     else:
         error("unsupported arch in reg_ip")
-    
+
 # gdb interaction
 def gdb_check_and_init():
     "eh_frame_check requires a gdb linked to Python 2"
-    if sys.version_info[0] == 3:
-        error ("GDB with Python 2 is required.\n" +
+    if sys.version_info[0] > 3:
+        error ("GDB with Python 2 or 3 is required.\n" +
                "Recipe: dowload gdb from http://ftp.gnu.org/gnu/gdb/.\n" +
                "./configure --prefix /usr/local/gdb-python2 --with-python\n" +
                "make; make install")
@@ -355,9 +357,9 @@ def gdb_check_and_init():
     gdb_execute('set pagination off')
 
 def gdb_execute(s, sl=[]):
-    """ Execute one or more GDB commands.  
+    """ Execute one or more GDB commands.
         Returns the output of the last one.
-    """ 
+    """
     str = gdb.execute(s, True, True)
     if sl == []:
         return str
@@ -372,7 +374,7 @@ def gdb_goto_main():
     except:
         info_file = gdb_execute('info file').split('\n')
         entry_point_s = next(l for l in info_file if "Entry point" in l)
-        entry_point = long(entry_point_s[entry_point_s.find(':')+1:],16)
+        entry_point = int(entry_point_s[entry_point_s.find(':')+1:],16)
         gdb_execute('break *'+format_hex(entry_point), ['run'])
         dis_libc_init = gdb_execute('x/14i $pc')
         main_addr = None
@@ -383,7 +385,7 @@ def gdb_goto_main():
         if main_addr == None:
             error ("gdb_goto_main, cannot determine the address of main")
         gdb_execute('break *'+main_addr, ['cont'])
-        
+
 def gdb_current_file():
     str = (gdb_execute('info file')).split('\n',1)[0]
     return str[str.find('"')+1:str.rfind('"')]
@@ -393,7 +395,7 @@ def gdb_dyn_linked_files():
         Must be invoked after gdb_goto_main
     """
     linked_files = IntervalTree()
-    
+
     lines = gdb_execute('info file').split('\n')
     for l in lines:
         try:
@@ -403,9 +405,9 @@ def gdb_dyn_linked_files():
             pass
 
     return linked_files
-            
+
 def gdb_get_ip():
-    return long(gdb.parse_and_eval(reg_ip()))
+    return int(gdb.parse_and_eval(reg_ip()))
 
 def gdb_get_instruction():
     i = gdb_execute("x/i "+reg_ip())
@@ -429,11 +431,11 @@ def gdb_get_sp():
 def gdb_get_reg_num(regnum):
     regname = describe_reg_name(regnum)
     value = gdb.parse_and_eval("$"+regname)
-    return long(value)
+    return int(value)
 
 def gdb_get_reg(reg):
     value = gdb.parse_and_eval("$"+reg)
-    return long(value)
+    return int(value)
 
 
 # interpreter of Dwarf expressions
@@ -465,7 +467,7 @@ class ExprEval(GenericExprVisitor):
         super(ExprEval, self).__init__(structs)
         self._init_lookups()
         self._value_parts = []
-        self._stack = [] 
+        self._stack = []
 
     def clear(self):
         self._value_parts = []
@@ -513,28 +515,28 @@ class ExprEval(GenericExprVisitor):
                 v = int(opcode_name[9:])
                 self._stack.append(v)
                 debug_eval (' * debug lit: {0}'.format(v))
-                return "(I)"+opcode_name             
-            # binary ops   
+                return "(I)"+opcode_name
+            # binary ops
             elif opcode_name.startswith('DW_OP_plus'):
                 v1 = self._stack.pop()
                 v2 = self._stack.pop()
                 debug_eval (' * debug plus v1: {0}; v2 {1}; {2}'.format(v1,v2,v1+v2))
                 self._stack.append(v1 + v2)
-                return "(I)"+opcode_name                                
+                return "(I)"+opcode_name
             elif opcode_name.startswith('DW_OP_and'):
                 v1 = self._stack.pop()
                 v2 = self._stack.pop()
                 v= v2 & v1
                 self._stack.append(v)
                 debug_eval (' * debug and v1: {0}; v2 {1}; {2}'.format(v1,v2,v))
-                return "(I)"+opcode_name                                
+                return "(I)"+opcode_name
             elif opcode_name.startswith('DW_OP_shl'):
                 v1 = self._stack.pop()
                 v2 = self._stack.pop()
                 v= v2 << v1
                 self._stack.append(v)
                 debug_eval (' * debug shl v1: {0}; v2 {1}; {2}'.format(v1,v2,v))
-                return "(I)"+opcode_name                                
+                return "(I)"+opcode_name
             # comparison
             elif opcode_name.startswith('DW_OP_ge'):
                 v1 = self._stack.pop()
@@ -542,7 +544,7 @@ class ExprEval(GenericExprVisitor):
                 v = 1 if v2 >= v1 else 0
                 self._stack.append(v)
                 debug_eval (' * debug ge v1: {0}; v2 {1}; {2}'.format(v1,v2,v))
-                return "(I)"+opcode_name                                
+                return "(I)"+opcode_name
             else:
                 return opcode_name
         elif opcode_name in self._ops_with_decimal_arg:
@@ -610,7 +612,7 @@ def power_extract_registers(s):
         r1 = rs[0]
         try:
             rs1 = rs[1]
-            off = long(rs1[:rs1.index('(')])
+            off = int(rs1[:rs1.index('(')])
             r2 = rs1[rs1.index('(')+1:rs1.index(')')]
         except:
             off = None
@@ -695,11 +697,11 @@ def validate(structs, entry, regs_info, status):
 
     return ra_eh_frame == ra_status
 
-    
+
 # main
 def main():
     global ARCH
-    
+
     try:
         gdb_check_and_init()
         symbol_table = IntervalTree()
@@ -713,7 +715,7 @@ def main():
             ARCH = elffile.get_machine_arch()
             memorize_symbol_table(elffile, symbol_table, current_file)
             dump_symbol_table(symbol_table)
-            dwarfinfo = read_eh_frame_table(elffile) 
+            dwarfinfo = read_eh_frame_table(elffile)
             eh_frame_table = memorize_eh_frame_table(dwarfinfo)
 
         pyelftools_init()
@@ -724,11 +726,11 @@ def main():
         gdb_goto_main()
 
         linked_files = gdb_dyn_linked_files()
-        print "linked files"
+        print ("linked files")
         for f in linked_files:
             print("{0}-{1}: {2}".format(hex(f.begin), hex(f.end), f.data))
-        print "end linked files"
-        
+        print ("end linked files")
+
         if ARCH=='x64' or ARCH=='x86':
             status = X86_Status(gdb_get_sp())
         elif ARCH=='power':
@@ -737,15 +739,15 @@ def main():
             error ("ARCH not specified: supported arch are x64, x86, and power")
 
         emitline ("INIT: "+ str(status))
- 
+
         # work
         while True:
 
-            current_ip = gdb_get_ip() 
+            current_ip = gdb_get_ip()
             current_function = get_function_name(symbol_table,
                                                  linked_files, current_ip)
             current_instruction = gdb_get_instruction()
-            emit ("=> %s [%s] (%s %s)" % (format_hex(current_ip), 
+            emit ("=> %s [%s] (%s %s)" % (format_hex(current_ip),
                                           current_function,
                                           current_instruction[0],
                                           current_instruction[1]))
@@ -758,7 +760,7 @@ def main():
                 # emit ("\n  => from %s\n" % format_hex(current_eh_frame_entry['pc']))
                 # print (repr(current_eh))
 
-                if not(validate(dwarfinfo.structs, current_eh_frame_entry, 
+                if not(validate(dwarfinfo.structs, current_eh_frame_entry,
                                 regs_info, status)):
                     print (" | Table Mismatch at IP: "+format_hex(current_ip))
                     print (" | eh_frame entry from : "+format_hex(current_eh_frame_entry['pc']) + ' : ' + repr(current_eh))
@@ -805,11 +807,11 @@ def main():
 
             gdb_execute("stepi")
 
-        print ("Completed: "+current_file)    
+        print ("Completed: "+current_file)
         gdb_execute('quit')
-    except: 
+    except:
         error ("Unexpected error\n\n" + traceback.format_exc())
 
 if __name__ == '__main__':
-    main() 
+    main()
    # cProfile.run('main()','profile.log')
