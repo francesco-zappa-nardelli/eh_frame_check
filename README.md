@@ -15,16 +15,16 @@ reported.
 Setup
 -----
 
-`eh_frame_check.py` relies on gdb with the python-2.7 interpreter
+`eh_frame_check.py` relies on gdb with the python 2.7 or 3 interpreter
 compiled in.  To check:
 
-```$ gdb
+```
+$ gdb
 (gdb) python print (sys.version)
 ````
 
 In case, the magic incantation to recompile gdb is:
 
-- ensure that the command python invokes python 2.7
 - download gdb from http://ftp.gnu.org/gnu/gdb (tested with GNU gdb (GDB) 7.11)
 - ./configure --prefix /usr/local/gdb-python2 --with-python
 - make; make install
@@ -32,7 +32,8 @@ In case, the magic incantation to recompile gdb is:
 Invocation
 ----------
 
-```$ gdb -q -x eh_frame_check.py <path_to_binary>
+```
+$ gdb -q -x eh_frame_check.py <path_to_binary>
 ```
 
 At the beginning of the script the options `verbose` and `dbg_eval`
@@ -41,7 +42,8 @@ instructions and of the dwarf expression evaluator.
 
 A sample trace with `verbose` enabled:
 
-```$ gdb -q -x eh_frame_check.py ~/tmp/foo3
+```
+$ gdb -q -x eh_frame_check.py ~/tmp/foo3
 Reading symbols from /home/zappa/tmp/foo3...done.
 INIT: ['0x-1', '0x7fffffffe1f8']
 => 0x400530 (sub)
@@ -81,9 +83,7 @@ Notes
 The concrete view of the stack frame is built by:
 
 - intercept CALL: a return address is pushed on the stack
-
 - intercept RET: a return address is popped by the stack
-
 
 Attic
 -----
@@ -97,5 +97,3 @@ Disassembly of section .plt:
   401030:       ff 35 d2 4f 20 00       pushq  0x204fd2(%rip)        # 606008 <__ctype_b_loc@plt+0x204cd8>
   401036:       ff 25 d4 4f 20 00       jmpq   *0x204fd4(%rip)        # 606010 <__ctype_b_loc@plt+0x204ce0>
 ````
-
-
