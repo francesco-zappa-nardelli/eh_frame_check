@@ -631,6 +631,9 @@ class X86_Status:
         self._after_push_rip_count = 0
         self._after_push_rip = False
 
+        # one calle-saved register (%rbp)
+        self._cs_stack = [-1];
+
     def __str__(self):
         s1 = (str(map(lambda x: format_hex(x), self._ra_stack))).strip('[]')
         return '['+s1+', \''+format_hex(self._ra_at)+'\']'
@@ -656,6 +659,16 @@ class X86_Status:
             self._after_push_rip = False
         self._after_push_rip_count = self._after_push_rip_count - 1
 
+    def get_cs(self):
+        if len(self._cs_stack) > 1:
+            return self._cs_stack[-1]
+
+    def push_cs(self, new_addr):
+        self._cs_stack.append(int(str(new_addr), 16))
+
+    def pop_cs(self):
+        self._cs_stack.pop()
+
 class Power_Status:
     def __init__(self):
         self._ra_at = 'lr'
@@ -676,26 +689,47 @@ class Power_Status:
 def validate(structs, entry, regs_info, status):
     reg_order, ra_regnum = regs_info
 
+    ### Called Saved registers check ###
+    rbp_regnum = 0 # Temporary only for rbp
+    for regnum in reg_order:
+        if describe_reg_name(regnum) == 'rbp':
+            rbp_regnum = regnum
+
+    try:
+        cs_eh_frame = eval_RegisterRule(structs, entry[rbp_regnum], entry['cfa'])
+    except:
+        # CFA undefined in eh_frame_table
+        cs_eh_frame= None
+        return True
+
+    cs_status = status.get_cs()
+
+    # print ("\n  => CS: cs_eh_frame = "+format_hex(cs_eh_frame))
+    # print (  "  => CS: cs_status   = "+format_hex(cs_status))
+
+    if cs_eh_frame != cs_status:
+        print ("\n ---------------------------------- ")
+        print (" | CS: cs_eh_frame = "+format_hex(cs_eh_frame))
+        print (" | CS: cs_status   = "+format_hex(cs_status))
+
     try:
         ra_eh_frame = eval_RegisterRule(structs, entry[ra_regnum], entry['cfa'])
     except:
-        ra_eh_frame = None
-
-    if ra_eh_frame == None:
         # CFA is undefined in the eh_frame_table
+        ra_eh_frame = None
         return True
 
     ra_status = status.get_ra()
 
     # print ("\n  => RA: eh_frame = "+format_hex(ra_eh_frame))
-    # print ("  => RA: status   = "+format_hex(ra_status))
+    # print (  "  => RA: status   = "+format_hex(ra_status))
 
     if ra_eh_frame != ra_status:
         print ("\n ---------------------------------- ")
         print (" | RA: eh_frame = "+format_hex(ra_eh_frame))
         print (" | RA: status   = "+format_hex(ra_status))
 
-    return ra_eh_frame == ra_status
+    return ra_eh_frame == ra_status and cs_eh_frame == cs_status
 
 
 # main
@@ -789,6 +823,14 @@ def main():
                         status.push_ra(gdb_get_sp()-8)
                         status.set_after_push_rip()
                         emitline ("PUSH (%rip): "+ str(status))
+                    if current_instruction[1] == "%rbp":
+                        status.push_cs(gdb_get_sp()-8)
+                        emitline ("PUSH (%rbp): "+ str(status))
+
+                elif current_opcode[:3] == "pop":
+                    if current_instruction[1] == "%rbp":
+                        status.pop_cs()
+                        emitline("POP (%rbp): "+str(status))
 
                 status.reset_after_push_rip()
 
