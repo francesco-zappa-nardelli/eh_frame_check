@@ -635,8 +635,18 @@ class X86_Status:
         self._cs_stack = [-1];
 
     def __str__(self):
-        s1 = (str(map(lambda x: format_hex(x), self._ra_stack))).strip('[]')
-        return '['+s1+', \''+format_hex(self._ra_at)+'\']'
+        s_ra = ""
+        for i in self._ra_stack:
+            s_ra = s_ra + '\'' + format_hex(i) + '\', '
+        s_ra = '\n\tRA: ['+s_ra.strip('[]')+'\''+format_hex(self._ra_at)+'\']'
+
+        s_cs = ""
+        for i in self._cs_stack:
+            s_cs = s_cs + '\'' + format_hex(i) + '\', '
+        s_cs = '\tCS: ['+(s_cs.strip('[]'))[:(len(s_cs)-2)] +']'
+
+        res = s_ra+"\n"+s_cs
+        return res
 
     def get_ra(self):
         if self._after_push_rip:
@@ -825,12 +835,12 @@ def main():
                         emitline ("PUSH (%rip): "+ str(status))
                     if current_instruction[1] == "%rbp":
                         status.push_cs(gdb_get_sp()-8)
-                        emitline ("PUSH (%rbp): "+ str(status))
+                        emitline ("PUSH %rbp: "+str(status))
 
                 elif current_opcode[:3] == "pop":
                     if current_instruction[1] == "%rbp":
                         status.pop_cs()
-                        emitline("POP (%rbp): "+str(status))
+                        emitline("POP %rbp: "+str(status))
 
                 status.reset_after_push_rip()
 
