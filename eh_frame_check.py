@@ -725,11 +725,11 @@ def validate_cs_registers(structs, entry, regs_info, status):
 
         cs_status = status.get_cs()
 
+        # print ("\n  => CS: cs_eh_frame = "+format_hex(cs_eh_frame))
+        # print (  "  => CS: cs_status   = "+ ('u' if cs_status == 'u' else format_hex(cs_status)))
+
         if cs_status == 'u':
             return True
-
-        # print ("\n  => CS: cs_eh_frame = "+format_hex(cs_eh_frame))
-        # print (  "  => CS: cs_status   = "+format_hex(cs_status))
 
         if cs_eh_frame != cs_status:
             print ("\n ---------------------------------- ")
@@ -865,6 +865,10 @@ def main():
                     if current_instruction[1] == "%rbp":
                         status.restore_cs()
                         emitline("POP %rbp: "+str(status))
+
+                elif current_opcode[:6] == "leaveq":
+                    status.restore_cs()
+                    emitline("LEAVEQ")
 
                 status.reset_after_push_rip()
 
