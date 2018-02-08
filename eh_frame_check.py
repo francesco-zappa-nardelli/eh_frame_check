@@ -38,6 +38,7 @@ import cProfile
 # Options
 verbose = True
 dbg_eval = False
+cs_eval = False
 
 # Setup pyelftools
 myPath = '/home/raph/Documents/TRAVAIL/X/Project/pyelftools/'
@@ -642,7 +643,10 @@ class X86_Status:
 
         s_cs = ""
         for i in self._cs_stack:
-            s_cs = s_cs + '\'' + format_hex(i) + '\', '
+            if i == 'u':
+                s_cs = s_cs + '\'u\', '
+            else:
+                s_cs = s_cs + '\'' + format_hex(i) + '\', '
         s_cs = '\tCS: ['+(s_cs.strip('[]'))[:(len(s_cs)-2)] +']'
 
         res = s_ra+"\n"+s_cs
@@ -679,6 +683,12 @@ class X86_Status:
     def pop_cs(self):
         self._cs_stack.pop()
 
+    def restore_cs(self):
+        self._cs_stack[-1] = 'u'
+
+    def purge_restored_cs(self):
+        self._cs_stack = [x for x in self._cs_stack if x != 'u']
+
 class Power_Status:
     def __init__(self):
         self._ra_at = 'lr'
@@ -696,31 +706,44 @@ class Power_Status:
     def update_ra_addr(self,addr):
         self._ra_at = addr
 
-def validate(structs, entry, regs_info, status):
-    reg_order, ra_regnum = regs_info
+def validate_cs_registers(structs, entry, regs_info, status):
+    if cs_eval:
+        reg_order, ra_regnum = regs_info
 
-    ### Called Saved registers check ###
-    rbp_regnum = 0 # Temporary only for rbp
-    for regnum in reg_order:
-        if describe_reg_name(regnum) == 'rbp':
-            rbp_regnum = regnum
+        ### Called Saved registers check ###
+        rbp_regnum = 0 # Temporary only for rbp
+        for regnum in reg_order:
+            if describe_reg_name(regnum) == 'rbp':
+                rbp_regnum = regnum
 
-    try:
-        cs_eh_frame = eval_RegisterRule(structs, entry[rbp_regnum], entry['cfa'])
-    except:
-        # CFA undefined in eh_frame_table
-        cs_eh_frame= None
+        try:
+            cs_eh_frame = eval_RegisterRule(structs, entry[rbp_regnum], entry['cfa'])
+        except:
+            # CFA undefined in eh_frame_table
+            cs_eh_frame= None
+            return True
+
+        cs_status = status.get_cs()
+
+        if cs_status == 'u':
+            return True
+
+        # print ("\n  => CS: cs_eh_frame = "+format_hex(cs_eh_frame))
+        # print (  "  => CS: cs_status   = "+format_hex(cs_status))
+
+        if cs_eh_frame != cs_status:
+            print ("\n ---------------------------------- ")
+            print (" | CS: cs_eh_frame = "+format_hex(cs_eh_frame))
+            print (" | CS: cs_status   = "+format_hex(cs_status))
+
+        return cs_eh_frame == cs_status
+    else:
         return True
 
-    cs_status = status.get_cs()
 
-    # print ("\n  => CS: cs_eh_frame = "+format_hex(cs_eh_frame))
-    # print (  "  => CS: cs_status   = "+format_hex(cs_status))
-
-    if cs_eh_frame != cs_status:
-        print ("\n ---------------------------------- ")
-        print (" | CS: cs_eh_frame = "+format_hex(cs_eh_frame))
-        print (" | CS: cs_status   = "+format_hex(cs_status))
+def validate(structs, entry, regs_info, status):
+    cs_validation = validate_cs_registers(structs, entry, regs_info, status)
+    reg_order, ra_regnum = regs_info
 
     try:
         ra_eh_frame = eval_RegisterRule(structs, entry[ra_regnum], entry['cfa'])
@@ -739,7 +762,7 @@ def validate(structs, entry, regs_info, status):
         print (" | RA: eh_frame = "+format_hex(ra_eh_frame))
         print (" | RA: status   = "+format_hex(ra_status))
 
-    return ra_eh_frame == ra_status and cs_eh_frame == cs_status
+    return ra_eh_frame == ra_status and cs_validation
 
 
 # main
@@ -823,6 +846,7 @@ def main():
 
                 elif current_opcode[:3] == "ret":
                     status.pop_ra()
+                    status.purge_restored_cs()
                     emitline ("RET: "+ str(status))
                     if status.get_ra() == -1:
                         break
@@ -839,7 +863,7 @@ def main():
 
                 elif current_opcode[:3] == "pop":
                     if current_instruction[1] == "%rbp":
-                        status.pop_cs()
+                        status.restore_cs()
                         emitline("POP %rbp: "+str(status))
 
                 status.reset_after_push_rip()
