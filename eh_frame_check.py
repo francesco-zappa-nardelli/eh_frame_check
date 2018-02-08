@@ -642,12 +642,13 @@ class X86_Status:
         s_ra = '\n\tRA: ['+s_ra.strip('[]')+'\''+format_hex(self._ra_at)+'\']'
 
         s_cs = ""
-        for i in self._cs_stack:
-            if i == 'u':
-                s_cs = s_cs + '\'u\', '
-            else:
-                s_cs = s_cs + '\'' + format_hex(i) + '\', '
-        s_cs = '\tCS: ['+(s_cs.strip('[]'))[:(len(s_cs)-2)] +']'
+        if cs_eval:            
+            for i in self._cs_stack:
+                if i == 'u':
+                    s_cs = s_cs + '\'u\', '
+                else:
+                    s_cs = s_cs + '\'' + format_hex(i) + '\', '
+            s_cs = '\tCS: ['+(s_cs.strip('[]'))[:(len(s_cs)-2)] +']'
 
         res = s_ra+"\n"+s_cs
         return res
