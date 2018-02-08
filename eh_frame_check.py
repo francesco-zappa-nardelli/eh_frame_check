@@ -36,7 +36,7 @@ import traceback
 import cProfile
 
 # Options
-verbose = True
+verbose = False
 dbg_eval = False
 cs_eval = False
 
@@ -892,6 +892,27 @@ def main():
     except:
         error ("Unexpected error\n\n" + traceback.format_exc())
 
+def print_usage():
+    print("#### Usage ####")
+    print("# Options:")
+    print("#\t[--check-cs] [--debug|-d] [--verbose|-v] [--help|-h]")
+    print("# Use me:")
+    print("#\tgdb -q -se <testfile> -P eh_frame_check.py [options]")
+
 if __name__ == '__main__':
+    print (str(sys.argv))
+    for arg in sys.argv:
+        print ("ARG = %s" % arg)
+        if arg == "--check-cs":
+            cs_eval = True
+        elif arg == '--debug' or arg == '-d':
+            dbg_eval = True
+        elif arg =='--verbose' or arg == '-v':
+            verbose = True
+        elif arg == '--help' or arg == '-h':
+            print_usage()
+            quit()
+        else:
+            print ("Unknown option %s" % arg)
     main()
    # cProfile.run('main()','profile.log')
