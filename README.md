@@ -33,15 +33,16 @@ Invocation
 ----------
 
 ```
-$ gdb -q -x eh_frame_check.py <path_to_binary>
+$ gdb -q -se <path_to_binary>  -P eh_frame_check.py <options>
 ```
 
-At the beginning of the script the options `verbose` and `dbg_eval`
-can be set to true to obtain respectively a trace of the analysed
-instructions and of the dwarf expression evaluator.  
+`verbose`, `dbg_eval` and `cs_eval` can be set to true using the options.
+By default these options are false and can be set to true to obtain respectively
+a trace of the analysed instructions, of the dwarf expression evaluator and check also the calle-saved register
 
 A sample trace with `verbose` enabled:
 
+> old example
 ```
 $ gdb -q -x eh_frame_check.py ~/tmp/foo3
 Reading symbols from /home/zappa/tmp/foo3...done.
@@ -62,7 +63,7 @@ CALL: ['0x-1', '0x7fffffffe1f8', '0x7fffffffe1d8']
 => 0x400400 (pushq)
 => 0x400406 (jmpq)
 => 0x7ffff7df04e0 (sub)
- ---------------------------------- 
+ ----------------------------------
  | eh_frame for ra = 0x7fffffffe1c8
  | status   for ra = 0x7fffffffe1d8
  | Table Mismatch at IP: 0x7ffff7df04e0
@@ -84,6 +85,13 @@ The concrete view of the stack frame is built by:
 
 - intercept CALL: a return address is pushed on the stack
 - intercept RET: a return address is popped by the stack
+
+The status of the calle-saved registers are built in their own way:
+- RBP
+  - intercept PUSH: a saved address is pushed on the stack
+  - intercept POP: a saved address is "restored" on the stack
+  - intercept RET: removes all restored addresses from the stack
+  - intercept LEAVE: acts as a POP + RET for rbp
 
 Attic
 -----
