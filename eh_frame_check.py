@@ -40,8 +40,8 @@ verbose = True
 dbg_eval = False
 
 # Setup pyelftools
-myPath = '/home/raph/Documents/TRAVAIL/X/Project/pyelftools/'
-# myPath = '/home/zappa/repos/zappa/dwarf/src-fzn/pyelftools/'
+# myPath = '/home/raph/Documents/TRAVAIL/X/Project/pyelftools/'
+myPath = '/home/zappanar/repos/pyelftools.git/trunk'
 #sys.path[0:0] = ['/home/zappa/repos/zappa/dwarf/src-fzn/pyelftools/']
 sys.path.insert(1, myPath)
 
@@ -60,6 +60,11 @@ from elftools.dwarf.descriptions import (
 from elftools.dwarf.dwarf_expr import GenericExprVisitor
 
 # using std intervaltree and storagecontainers
+
+ITPath = '/home/zappanar/source/intervaltree-2.1.0'
+SCPath = '/home/zappanar/source/sortedcontainers-1.5.9'
+sys.path.insert(1, ITPath)
+sys.path.insert(1, SCPath)
 from intervaltree import Interval, IntervalTree
 
 ARCH = '<unknown>'
@@ -131,7 +136,7 @@ def format_hex(addr, fieldsize=None, fullhex=False, lead0x=True, alternate=False
         field = '%x'
     else:
         field = '%' + '0%sx' % fieldsize
-    return s + field % addr
+    return s + field % int(addr)
 
 def dump_eh_frame_table_entry(entry):
     """ dumps an interpreted EH_CFI entry
