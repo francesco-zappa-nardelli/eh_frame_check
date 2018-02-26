@@ -637,8 +637,10 @@ class X86_Status:
         self._after_push_rip_count = 0
         self._after_push_rip = False
 
-        # one calle-saved register (%rbp)
-        self._cs_stack = [-1];
+        # The registers RBX, RBP, RDI, RSI, RSP, R12, R13, R14, and R15 are considered nonvolatile (callee-saved).
+        self._cs_list = ["rbx", "rbp", "rdi", "rsi", "rsp", "r12", "r13", "r14", "r15"]
+        # a list of stack each one following one calle-saved register
+        self._cs_stack = [[-1] for x in range(len(self._cs_list))]
 
     def __str__(self):
         s_ra = ""
@@ -647,16 +649,39 @@ class X86_Status:
         s_ra = '\n\tRA: ['+s_ra.strip('[]')+'\''+format_hex(self._ra_at)+'\']'
 
         s_cs = ""
-        if cs_eval:            
-            for i in self._cs_stack:
-                if i == 'u':
-                    s_cs = s_cs + '\'u\', '
-                else:
-                    s_cs = s_cs + '\'' + format_hex(i) + '\', '
-            s_cs = '\tCS: ['+(s_cs.strip('[]'))[:(len(s_cs)-2)] +']'
-
+        if cs_eval:
+            s_cs = "Calle-saved registers\n"
+            i = 0
+            # print(self._cs_stack)
+            for stack in self._cs_stack:
+                s_stack_cs = ""
+                for e in stack:
+                    if e == 'u':
+                        s_stack_cs = s_stack_cs + '\'u\', '
+                    else:
+                        s_stack_cs = s_stack_cs + '\'' + format_hex(e) + '\', '
+                s_stack_cs = '\t' + self._index_to_name(i) + ': ['+(s_stack_cs.strip('[]'))[:(len(s_stack_cs)-2)] +']\n'
+                s_cs = s_cs + s_stack_cs
+                i = i + 1
         res = s_ra+"\n"+s_cs
         return res
+
+    def _name_to_index(self, regname):
+        switcher = {
+            "rbx": 0,
+            "rbp": 1,
+            "rdi": 2,
+            "rsi": 3,
+            "rsp": 4,
+            "r12": 5,
+            "r13": 6,
+            "r14": 7,
+            "r15": 8,
+        }
+        return switcher.get(regname, "Invalid regname")
+
+    def _index_to_name(self, index):
+        return self._cs_list[index]
 
     def get_ra(self):
         if self._after_push_rip:
@@ -679,21 +704,28 @@ class X86_Status:
             self._after_push_rip = False
         self._after_push_rip_count = self._after_push_rip_count - 1
 
-    def get_cs(self):
-        if len(self._cs_stack) > 1:
-            return self._cs_stack[-1]
+    def get_cs(self, regname):
+        index = self._name_to_index(regname)
+        if len(self._cs_stack[index]) > 1:
+            return self._cs_stack[index][-1]
+        else:
+            return -1
 
-    def push_cs(self, new_addr):
-        self._cs_stack.append(int(str(new_addr), 16))
+    def push_cs(self, regname, new_addr):
+        index = self._name_to_index(regname)
+        self._cs_stack[index].append(int(str(new_addr), 16))
 
-    def pop_cs(self):
-        self._cs_stack.pop()
+    def pop_cs(self, regname):
+        index = self._name_to_index(regname)
+        self._cs_stack[index].pop()
 
-    def restore_cs(self):
-        self._cs_stack[-1] = 'u'
+    def restore_cs(self, regname):
+        index = self._name_to_index(regname)
+        self._cs_stack[index][-1] = 'u'
 
     def purge_restored_cs(self):
-        self._cs_stack = [x for x in self._cs_stack if x != 'u']
+        for i in range(len(self._cs_list)):
+            self._cs_stack[i] = [x for x in self._cs_stack[i] if x != 'u']
 
 class Power_Status:
     def __init__(self):
@@ -712,43 +744,60 @@ class Power_Status:
     def update_ra_addr(self,addr):
         self._ra_at = addr
 
-def validate_cs_registers(structs, entry, regs_info, status):
-    if cs_eval:
-        reg_order, ra_regnum = regs_info
-
-        ### Called Saved registers check ###
-        rbp_regnum = 0 # Temporary only for rbp
-        for regnum in reg_order:
-            if describe_reg_name(regnum) == 'rbp':
-                rbp_regnum = regnum
-
-        try:
-            cs_eh_frame = eval_RegisterRule(structs, entry[rbp_regnum], entry['cfa'])
-        except:
-            # CFA undefined in eh_frame_table
-            cs_eh_frame= None
-            return True
-
-        cs_status = status.get_cs()
-
-        # print ("\n  => CS: cs_eh_frame = "+format_hex(cs_eh_frame))
-        # print (  "  => CS: cs_status   = "+ ('u' if cs_status == 'u' else format_hex(cs_status)))
-
-        if cs_status == 'u':
-            return True
-
-        if cs_eh_frame != cs_status:
-            print ("\n ---------------------------------- ")
-            print (" | CS: cs_eh_frame = "+format_hex(cs_eh_frame))
-            print (" | CS: cs_status   = "+format_hex(cs_status))
-
-        return cs_eh_frame == cs_status
-    else:
+def validate_cs_register(structs, entry, status, regnum, regname):
+    try:
+        cs_eh_frame = eval_RegisterRule(structs, entry[regnum], entry['cfa'])
+    except:
+        # CFA undefined in eh_frame_table
+        cs_eh_frame=None
         return True
 
+    cs_status = status.get_cs(regname)
 
-def validate(structs, entry, regs_info, status):
-    cs_validation = validate_cs_registers(structs, entry, regs_info, status)
+    if cs_status == 'u':
+        return True
+
+    # print ("\n  => CS: cs_eh_frame = "+format_hex(cs_eh_frame))
+    # print (  "  => CS: cs_status   = "+ ('u' if cs_status == 'u' else format_hex(cs_status)))
+
+    if cs_eh_frame != cs_status:
+        print ("\n +----------------CS-CHECK----------------------")
+        print (  " | register | cs_eh_frame       | cs_status     ")
+        print (  " +----------+-------------------+---------------")
+        print (  " | "+regname+"      | "+format_hex(cs_eh_frame)+"    | " + format_hex(cs_status))
+
+    return cs_eh_frame == cs_status
+
+
+def validate_cs_registers(structs, entry, regs_info, status):
+    reg_order, ra_regnum = regs_info
+
+    ### Called Saved registers check ###
+    rbp_regnum = 0 # Temporary only for rbp
+    rbx, rbp, rdi, rsi, rsp, r12, r13, r14, r15 = True, True, True, True, True, True, True, True, True
+    for regnum in reg_order:
+        regname = describe_reg_name(regnum)
+        if regname == 'rbx':
+            rbx = validate_cs_register(structs, entry, status, regnum, regname)
+        elif regname == 'rbp':
+            rbp = validate_cs_register(structs, entry, status, regnum, regname)
+        elif regname == 'rdi':
+            rdi = validate_cs_register(structs, entry, status, regnum, regname)
+        elif regname == 'rsi':
+            rsi = validate_cs_register(structs, entry, status, regnum, regname)
+        elif regname == 'rsp':
+            rsp = validate_cs_register(structs, entry, status, regnum, regname)
+        elif regname == 'r12':
+            r12 = validate_cs_register(structs, entry, status, regnum, regname)
+        elif regname == 'r13':
+            r13 = validate_cs_register(structs, entry, status, regnum, regname)
+        elif regname == 'r14':
+            r14 = validate_cs_register(structs, entry, status, regnum, regname)
+        elif regname == 'r15':
+            r15 = validate_cs_register(structs, entry, status, regnum, regname)
+    return rbx and rbp and rdi and rsi and rsp and r12 and r13 and r14 and r15
+
+def validate_ra(structs, entry, regs_info, status):
     reg_order, ra_regnum = regs_info
 
     try:
@@ -764,11 +813,22 @@ def validate(structs, entry, regs_info, status):
     # print (  "  => RA: status   = "+format_hex(ra_status))
 
     if ra_eh_frame != ra_status:
-        print ("\n ---------------------------------- ")
+        print ("\n -------------------------------------- ")
         print (" | RA: eh_frame = "+format_hex(ra_eh_frame))
         print (" | RA: status   = "+format_hex(ra_status))
 
-    return ra_eh_frame == ra_status and cs_validation
+    return ra_eh_frame == ra_status
+
+
+def validate(structs, entry, regs_info, status):
+    if cs_eval:
+        cs_validation = validate_cs_registers(structs, entry, regs_info, status)
+    else:
+        cs_validation = True
+
+    ra_validation = validate_ra(structs, entry, regs_info, status)
+
+    return ra_validation and cs_validation
 
 
 # main
@@ -835,6 +895,7 @@ def main():
 
                 if not(validate(dwarfinfo.structs, current_eh_frame_entry,
                                 regs_info, status)):
+                    print (" +----------------------------------------------")
                     print (" | Table Mismatch at IP: "+format_hex(current_ip))
                     print (" | eh_frame entry from : "+format_hex(current_eh_frame_entry['pc']) + ' : ' + repr(current_eh))
                     abort()
@@ -864,16 +925,16 @@ def main():
                         status.set_after_push_rip()
                         emitline ("PUSH (%rip): "+ str(status))
                     if current_instruction[1] == "%rbp":
-                        status.push_cs(gdb_get_sp()-8)
+                        status.push_cs('rbp', gdb_get_sp()-8)
                         emitline ("PUSH %rbp: "+str(status))
 
                 elif current_opcode[:3] == "pop":
                     if current_instruction[1] == "%rbp":
-                        status.restore_cs()
+                        status.restore_cs('rbp')
                         emitline("POP %rbp: "+str(status))
 
                 elif current_opcode[:6] == "leaveq":
-                    status.restore_cs()
+                    status.restore_cs('rbp')
                     emitline("LEAVEQ")
 
                 status.reset_after_push_rip()
