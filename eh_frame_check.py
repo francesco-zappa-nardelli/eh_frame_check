@@ -683,6 +683,9 @@ class X86_Status:
     def _index_to_name(self, index):
         return self._cs_list[index]
 
+    def is_cs_reg(self, regname):
+        return regname in self._cs_list
+
     def get_ra(self):
         if self._after_push_rip:
             return self._ra_stack[len(self._ra_stack)-1]
@@ -830,6 +833,19 @@ def validate(structs, entry, regs_info, status):
 
     return ra_validation and cs_validation
 
+def process_push(status, regname):
+    if regname == 'rip':
+        status.push_ra(gdb_get_sp()-8)
+        status.set_after_push_rip()
+        emitline("PUSH %rip: "+ str(status))
+    elif status.is_cs_reg(regname):
+        status.push_cs(regname, gdb_get_sp()-8)
+        emitline('PUSH %'+regname+': '+str(status))
+
+def process_pop(status, regname):
+    if status.is_cs_reg(regname):
+        status.restore_cs(regname)
+        emitline('POP %'+regname+': '+str(status))
 
 # main
 def main():
@@ -919,19 +935,10 @@ def main():
                         break
 
                 elif current_opcode[:4] == "push":
-                    regs = x86_extract_registers(current_instruction[1])
-                    if regs == "%rip":
-                        status.push_ra(gdb_get_sp()-8)
-                        status.set_after_push_rip()
-                        emitline ("PUSH (%rip): "+ str(status))
-                    if current_instruction[1] == "%rbp":
-                        status.push_cs('rbp', gdb_get_sp()-8)
-                        emitline ("PUSH %rbp: "+str(status))
+                    process_push(status, current_instruction[1].strip('%'))
 
                 elif current_opcode[:3] == "pop":
-                    if current_instruction[1] == "%rbp":
-                        status.restore_cs('rbp')
-                        emitline("POP %rbp: "+str(status))
+                    process_pop(status, current_instruction[1].strip('%'))
 
                 elif current_opcode[:6] == "leaveq":
                     status.restore_cs('rbp')
@@ -967,9 +974,7 @@ def print_usage():
     print("#\tgdb -q -se <testfile> -P eh_frame_check.py [options]")
 
 if __name__ == '__main__':
-    print (str(sys.argv))
     for arg in sys.argv:
-        print ("ARG = %s" % arg)
         if arg == "--check-cs":
             cs_eval = True
         elif arg == '--debug' or arg == '-d':
