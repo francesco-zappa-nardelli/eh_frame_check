@@ -980,10 +980,6 @@ def parse_options():
     global cs_eval
     
     # FZN: if anybody knows of an alternative way to do this...
-    print("arg verbose:"+str(arg_verbose))
-
-    print("verbose:"+str(verbose))
-
     try:
         if arg_verbose:
             verbose = True
@@ -991,8 +987,6 @@ def parse_options():
             verbose = False
     except NameError:
         verbose = False
-
-    print("verbose:"+str(verbose))
 
     try:
         if arg_debug:
