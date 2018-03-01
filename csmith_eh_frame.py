@@ -51,9 +51,6 @@ def test():
         print('FOUND A MISMATCH')
         raise MismatchException()
 
-        
-    pass
-
 
 def clean():
     pass

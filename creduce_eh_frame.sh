@@ -19,7 +19,7 @@ if
   # ! grep 'incompatible pointer to' out.txt &&\
   # ! grep 'incompatible integer to' out.txt &&\
   # ! grep 'type specifier missing' out.txt &&\
-  gcc -Wall -Wextra -O2 -I/home/zappa/source/cmmtest/csmith-locks-bin/include/csmith-2.1.0/ input.c -o smallz > outa.txt 2>&1 &&\
+  gcc -Wall -Wextra -O2 -I/home/zappanar/repos/zappa/compiler_testing/csmith_with_locks/runtime input.c -o smallz > outa.txt 2>&1 &&\
   ! grep uninitialized outa.txt &&\
   ! grep 'without a cast' outa.txt &&\
   ! grep 'control reaches end' outa.txt &&\
@@ -38,18 +38,18 @@ if
   ! grep 'initialization from incompatible pointer type' outa.txt &&\
   ! grep 'excess elements in struct initializer' outa.txt &&\
   ! grep 'comparison between pointer and integer' outa.txt &&\
-  frama-c -cpp-command "gcc -C -Dvolatile= -E -I. -I/home/zappa/source/cmmtest/csmith-locks-bin/include/csmith-2.1.0/" -val -no-val-show-progress -machdep x86_64 -obviously-terminates input-framac.c > framac_result 2>&1 &&\
+  frama-c -cpp-command "gcc -C -Dvolatile= -E -I. -I/home/zappanar/repos/zappa/compiler_testing/csmith_with_locks/runtime" -val -no-val-show-progress -machdep x86_64 -obviously-terminates input-framac.c > framac_result 2>&1 &&\
   ! egrep -i '(user error|assert)' framac_result > /dev/null 2>&1 &&\
   echo "Curr dir:" &&\
   echo `pwd` &&\
   echo "COMPILING" &&\
-  clang -O3 -I /home/zappa/source/cmmtest/csmith-locks-bin/include/csmith-2.1.0/ -o input input.c > /dev/null 2>&1 &&\
-#  gcc -O2 -static -I /home/zappa/source/cmmtest/csmith-locks-bin/include/csmith-2.1.0/ -o input input.c > /dev/null 2>&1 &&\
+  # clang -O3 -I /home/zappanar/repos/zappa/compiler_testing/csmith_with_locks/runtime -o input input.c > /dev/null 2>&1 &&\
+  gcc -O1 -I/home/zappanar/repos/zappa/compiler_testing/csmith_with_locks/runtime -o input input.c > /dev/null 2>&1 &&\
   # echo "PRE TESTING" &&\
   # echo `pwd` &&\
   # /home/zappa/source/gdb-py27/bin/gdb -x /home/zappa/repos/zappa/dwarf/src-fzn/eh_frame_check.py input &&\
   echo "TESTING" &&\
-  /home/zappa/source/gdb-py27/bin/gdb -x /home/zappa/repos/zappa/dwarf/src-fzn/eh_frame_check.py input > eh_frame_check_result.txt 2>&1 < /dev/null &&\
+  gdb -q -batch -x /home/zappanar/repos/eh_frame_check/eh_frame_check.py input > eh_frame_check_result.txt 2>&1 < /dev/null &&\
   echo "SEARCHING" &&\
   grep "Mismatch" eh_frame_check_result.txt
 then

@@ -2,7 +2,7 @@
 #
 #     Francesco Zappa Nardelli, Parkas project, INRIA Paris
 #
-# Copyright 2016
+# Copyright 2016-2018
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -966,25 +966,71 @@ def main():
     except:
         error ("Unexpected error\n\n" + traceback.format_exc())
 
+        
 def print_usage():
-    print("#### Usage ####")
-    print("# Options:")
-    print("#\t[--check-cs] [--debug|-d] [--verbose|-v] [--help|-h]")
-    print("# Use me:")
-    print("#\tgdb -q -se <testfile> -P eh_frame_check.py [options]")
+    print("\n#### Usage ####")
+    print("gdb -q -batch -ex 'py arg_verbose = True' -x eh_frame_check.py <testfile>")
+    print("\n# Options:")
+    print("#arg_verbose (False), arg_debug (False), arg_check_cs (True)")
 
-if __name__ == '__main__':
-    for arg in sys.argv:
-        if arg == "--check-cs":
-            cs_eval = True
-        elif arg == '--debug' or arg == '-d':
-            dbg_eval = True
-        elif arg =='--verbose' or arg == '-v':
+    
+def parse_options():
+    global verbose
+    global dbg_eval
+    global cs_eval
+    
+    # FZN: if anybody knows of an alternative way to do this...
+    print("arg verbose:"+str(arg_verbose))
+
+    print("verbose:"+str(verbose))
+
+    try:
+        if arg_verbose:
             verbose = True
-        elif arg == '--help' or arg == '-h':
-            print_usage()
-            quit()
         else:
-            print ("Unknown option %s" % arg)
+            verbose = False
+    except NameError:
+        verbose = False
+
+    print("verbose:"+str(verbose))
+
+    try:
+        if arg_debug:
+            dbg_eval = True
+        else:
+            dbg_eval = False
+    except NameError:
+        dbg_eval = False
+
+    try:
+        if arg_check_cs:
+            cs_eval = True
+        else:
+            cs_eval = False
+    except NameError:
+        cs_eval = True
+                
+    # for arg in sys.argv:
+    #     if arg == "--check-cs":
+    #         cs_eval = True
+    #     elif arg == '--debug' or arg == '-d':
+    #         dbg_eval = True
+    #     elif arg =='--verbose' or arg == '-v':
+    #         verbose = True
+    #     elif arg == '--help' or arg == '-h':
+    #         print_usage()
+    #         quit()
+    #     else:
+    #         print ("Unknown option %s" % arg)
+
+        
+if __name__ == '__main__':
+    try:
+        gdb
+    except NameError:
+        print_usage()
+        sys.exit("") 
+
+    parse_options()
     main()
    # cProfile.run('main()','profile.log')

@@ -13,7 +13,7 @@ do
     echo "  Compiling..."
     #ccomp -O -fstruct-passing -fbitfields -I /home/zappa/source/cmmtest/csmith-locks-bin/include/csmith-2.1.0/ -o csmith_file csmith_file.c # > /dev/null 2>&1
 
-    gcc -O1 -I /home/zappa/source/cmmtest/csmith-locks-bin/include/csmith-2.1.0/ -o csmith_file csmith_file.c > /dev/null 2>&1
+    gcc -O1 -I /home/zappa/source/cmmtest/csmith-locks-bin/include/csmith-2.1.0/ -o csmith_file csmith_file.c > /dev/null 
 
     echo "  Testing termination..."
     timeout 1 ./csmith_file
