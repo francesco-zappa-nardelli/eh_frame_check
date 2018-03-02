@@ -774,9 +774,7 @@ def validate_cs_register(structs, entry, status, regnum, regname):
 
 def validate_cs_registers(structs, entry, regs_info, status):
     reg_order, ra_regnum = regs_info
-
     ### Called Saved registers check ###
-    rbx, rbp, rdi, rsi, rsp, r12, r13, r14, r15 = True, True, True, True, True, True, True, True, True
     dict = {
         "rbx": True,
         "rbp": True,
