@@ -776,29 +776,28 @@ def validate_cs_registers(structs, entry, regs_info, status):
     reg_order, ra_regnum = regs_info
 
     ### Called Saved registers check ###
-    rbp_regnum = 0 # Temporary only for rbp
     rbx, rbp, rdi, rsi, rsp, r12, r13, r14, r15 = True, True, True, True, True, True, True, True, True
+    dict = {
+        "rbx": True,
+        "rbp": True,
+        "rdi": True,
+        "rsi": True,
+        "rsp": True,
+        "r12": True,
+        "r13": True,
+        "r14": True,
+        "r15": True,
+    }
     for regnum in reg_order:
         regname = describe_reg_name(regnum)
-        if regname == 'rbx':
-            rbx = validate_cs_register(structs, entry, status, regnum, regname)
-        elif regname == 'rbp':
-            rbp = validate_cs_register(structs, entry, status, regnum, regname)
-        elif regname == 'rdi':
-            rdi = validate_cs_register(structs, entry, status, regnum, regname)
-        elif regname == 'rsi':
-            rsi = validate_cs_register(structs, entry, status, regnum, regname)
-        elif regname == 'rsp':
-            rsp = validate_cs_register(structs, entry, status, regnum, regname)
-        elif regname == 'r12':
-            r12 = validate_cs_register(structs, entry, status, regnum, regname)
-        elif regname == 'r13':
-            r13 = validate_cs_register(structs, entry, status, regnum, regname)
-        elif regname == 'r14':
-            r14 = validate_cs_register(structs, entry, status, regnum, regname)
-        elif regname == 'r15':
-            r15 = validate_cs_register(structs, entry, status, regnum, regname)
-    return rbx and rbp and rdi and rsi and rsp and r12 and r13 and r14 and r15
+        try:
+            dic[regname] = validate_cs_register(structs, entry, status, regnum, regname)
+        except:
+            pass
+        for e in dict:
+            if not e:
+                return False
+    return True
 
 def validate_ra(structs, entry, regs_info, status):
     reg_order, ra_regnum = regs_info
@@ -966,19 +965,19 @@ def main():
     except:
         error ("Unexpected error\n\n" + traceback.format_exc())
 
-        
+
 def print_usage():
     print("\n#### Usage ####")
     print("gdb -q -batch -ex 'py arg_verbose = True' -x eh_frame_check.py <testfile>")
     print("\n# Options:")
     print("#arg_verbose (False), arg_debug (False), arg_check_cs (True)")
 
-    
+
 def parse_options():
     global verbose
     global dbg_eval
     global cs_eval
-    
+
     # FZN: if anybody knows of an alternative way to do this...
     try:
         if arg_verbose:
@@ -1003,7 +1002,7 @@ def parse_options():
             cs_eval = False
     except NameError:
         cs_eval = True
-                
+
     # for arg in sys.argv:
     #     if arg == "--check-cs":
     #         cs_eval = True
@@ -1017,13 +1016,13 @@ def parse_options():
     #     else:
     #         print ("Unknown option %s" % arg)
 
-        
+
 if __name__ == '__main__':
     try:
         gdb
     except NameError:
         print_usage()
-        sys.exit("") 
+        sys.exit("")
 
     parse_options()
     main()
