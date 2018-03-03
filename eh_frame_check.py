@@ -641,6 +641,21 @@ class X86_Status:
         self._cs_list = ["rbx", "rbp", "rdi", "rsi", "rsp", "r12", "r13", "r14", "r15"]
         # a list of stack each one following one calle-saved register
         self._cs_stack = [[-1] for x in range(len(self._cs_list))]
+        # Determines if a push or a pop is to be considered as a Callee-saved register
+        #   save or restore operation
+        # regname : (saved, saved_address, restored)
+        # we consider the epilogue pop to be the one restoring the prologue pushed value
+        self._cs_tracking = {
+                'rbx': (False, 0x0, False),
+                'rbp': (False, 0x0, False),
+                'rdi': (False, 0x0, False),
+                'rsi': (False, 0x0, False),
+                'rsp': (False, 0x0, False),
+                'r12': (False, 0x0, False),
+                'r13': (False, 0x0, False),
+                'r14': (False, 0x0, False),
+                'r15': (False, 0x0, False),
+        }
 
     def __str__(self):
         s_ra = ""
@@ -654,29 +669,40 @@ class X86_Status:
             i = 0
             # print(self._cs_stack)
             for stack in self._cs_stack:
+                regname = self._index_to_name(i)
+                s_reg_info = self._cs_tracking_str(regname)
                 s_stack_cs = ""
                 for e in stack:
                     if e == 'u':
                         s_stack_cs = s_stack_cs + '\'u\', '
                     else:
                         s_stack_cs = s_stack_cs + '\'' + format_hex(e) + '\', '
-                s_stack_cs = '\t' + self._index_to_name(i) + ': ['+(s_stack_cs.strip('[]'))[:(len(s_stack_cs)-2)] +']\n'
-                s_cs = s_cs + s_stack_cs
+                s_reg_info += '\t' + self._index_to_name(i) + ': ['+(s_stack_cs.strip('[]'))[:(len(s_stack_cs)-2)] +']\n'
+                s_cs = s_cs + s_reg_info
                 i = i + 1
         res = s_ra+"\n"+s_cs
         return res
 
+    def _cs_tracking_str(self, regname):
+        msg = '\t'
+        msg += '    saved' if self._cs_tracking[regname][0] else 'not saved'
+        msg += ' @ :'
+        msg += 'xxxxxxxxxxxxxx' if self._cs_tracking[regname][1] == 0x0 else str(self._cs_tracking[regname][1])
+        msg += '     restored' if self._cs_tracking[regname][2] else ' not restored'
+        return msg
+
+
     def _name_to_index(self, regname):
         switcher = {
-            "rbx": 0,
-            "rbp": 1,
-            "rdi": 2,
-            "rsi": 3,
-            "rsp": 4,
-            "r12": 5,
-            "r13": 6,
-            "r14": 7,
-            "r15": 8,
+            'rbx': 0,
+            'rbp': 1,
+            'rdi': 2,
+            'rsi': 3,
+            'rsp': 4,
+            'r12': 5,
+            'r13': 6,
+            'r14': 7,
+            'r15': 8,
         }
         return switcher.get(regname, "Invalid regname")
 
@@ -686,12 +712,41 @@ class X86_Status:
     def is_cs_reg(self, regname):
         return regname in self._cs_list
 
+    # checks if it is the first save of the callee-saved register of the function
+    #   (in the "prologue")
+    def _is_save_relevant(self, regname, address):
+        if self._cs_tracking[regname][0] == False:
+            tupl = (True, address, self._cs_tracking[regname][2])
+            self._cs_tracking[regname] = tupl
+            return True
+        return False
+
+    # checks if it is a restore of a callee-saved register in the epilogue
+    #   it does so by checking it restores the value saved in the prologue
+    def _is_restore_relevant(self, regname, address):
+        if self._cs_tracking[regname][0] and self._cs_tracking[regname][1] == address:
+            tupl = (self._cs_tracking[regname][0],  self._cs_tracking[regname][1], True)
+            self._cs_tracking[regname] = tupl
+            return True
+        return False
+
+    def is_reg_restored(self, regname):
+        return self._cs_tracking[regname][2]
+
+    # Upon entering a new function we must reset the register tracking
+    # so that the first pushes will count as prologue.
+    def reset_cs_tracking(self):
+        for key in self._cs_tracking:
+            self._cs_tracking[key] = (False, 0x0, False)
+            # => wasn't saved CS-Reg
+            # => wasn't restored CS-Reg
+
     def get_ra(self):
         if self._after_push_rip:
             return self._ra_stack[len(self._ra_stack)-1]
         return self._ra_at
 
-    def push_ra(self,new_sp):
+    def push_ra(self, new_sp):
         self._ra_stack.append(self._ra_at)
         self._ra_at = int(str(new_sp),16)
 
@@ -715,12 +770,20 @@ class X86_Status:
             return -1
 
     def push_cs(self, regname, new_addr):
-        index = self._name_to_index(regname)
-        self._cs_stack[index].append(int(str(new_addr), 16))
+        if self._is_save_relevant(regname, new_addr):
+            index = self._name_to_index(regname)
+            self._cs_stack[index].append(int(str(new_addr), 16))
+            emitline('PUSH %'+regname+': ')
+        else:
+            emitline('[IGNORED] PUSH %'+regname+': ')
 
     def pop_cs(self, regname):
-        index = self._name_to_index(regname)
-        self._cs_stack[index].pop()
+        if self._is_restore_relevant(regname, int(str(gdb_get_sp()), 16)):
+            index = self._name_to_index(regname)
+            self._cs_stack[index][-1] = 'u'
+            emitline('POP %'+regname+': ')
+        else:
+            emitline('[IGNORED] POP %'+regname+': ')
 
     def restore_cs(self, regname):
         index = self._name_to_index(regname)
@@ -748,16 +811,10 @@ class Power_Status:
         self._ra_at = addr
 
 def validate_cs_register(structs, entry, status, regnum, regname):
-    try:
-        cs_eh_frame = eval_RegisterRule(structs, entry[regnum], entry['cfa'])
-    except:
-        # CFA undefined in eh_frame_table
-        cs_eh_frame=None
-        return True
-
+    cs_eh_frame = eval_RegisterRule(structs, entry[regnum], entry['cfa'])
     cs_status = status.get_cs(regname)
 
-    if cs_status == 'u':
+    if status.is_reg_restored(regname) and cs_status == 'u':
         return True
 
     # print ("\n  => CS: cs_eh_frame = "+format_hex(cs_eh_frame))
@@ -775,26 +832,30 @@ def validate_cs_register(structs, entry, status, regnum, regname):
 def validate_cs_registers(structs, entry, regs_info, status):
     reg_order, ra_regnum = regs_info
     ### Called Saved registers check ###
-    dict = {
-        "rbx": True,
-        "rbp": True,
-        "rdi": True,
-        "rsi": True,
-        "rsp": True,
-        "r12": True,
-        "r13": True,
-        "r14": True,
-        "r15": True,
+    cs_check = {
+        'rbx': True,
+        'rbp': True,
+        'rdi': True,
+        'rsi': True,
+        'rsp': True,
+        'r12': True,
+        'r13': True,
+        'r14': True,
+        'r15': True,
     }
+    # for k, v in cs_check:
+    #     validate_cs_register(structs, entry, ..., key)
     for regnum in reg_order:
         regname = describe_reg_name(regnum)
         try:
-            dic[regname] = validate_cs_register(structs, entry, status, regnum, regname)
-        except:
+            cs_check[regname] = validate_cs_register(structs, entry, status, regnum, regname)
+        except Exception as e:
+            # print("exception: "+str(e))
             pass
-        for e in dict:
-            if not e:
-                return False
+
+    for k, v in cs_check.items():
+        if not v:
+            return False
     return True
 
 def validate_ra(structs, entry, regs_info, status):
@@ -837,12 +898,12 @@ def process_push(status, regname):
         emitline("PUSH %rip: "+ str(status))
     elif status.is_cs_reg(regname):
         status.push_cs(regname, gdb_get_sp()-8)
-        emitline('PUSH %'+regname+': '+str(status))
+        emitline(str(status))
 
 def process_pop(status, regname):
     if status.is_cs_reg(regname):
-        status.restore_cs(regname)
-        emitline('POP %'+regname+': '+str(status))
+        status.pop_cs(regname)
+        emitline(str(status))
 
 # main
 def main():
@@ -922,6 +983,7 @@ def main():
             if ARCH == 'x64' or ARCH == 'x86':
                 if current_opcode[:4] == "call":
                     status.push_ra(gdb_get_sp()-8)
+                    status.reset_cs_tracking()
                     emitline ("CALL: "+ str(status))
 
                 elif current_opcode[:3] == "ret":
