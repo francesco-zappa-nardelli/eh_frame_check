@@ -114,5 +114,5 @@ mkdir tmp
 cd tmp
 export CFLAGS="-I/usr/include/csmith-*/ -w"
 export PYTHONPATH=/path/to/pyelftools
-../util/csmith-batch.py ../testing/csmith-test.sh
+../../util/csmith-batch.py ../csmith-test.sh
 ```

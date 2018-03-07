@@ -1,6 +1,6 @@
 # synthesis
 
-Generate debug frame information from ORC.
+Generate debug frame information from ORC, and check it.
 
 Dependencies:
 * GCC
@@ -24,7 +24,7 @@ Example Csmith usage:
 ```shell
 mkdir tmp
 cd tmp
-export CFLAGS="-I/usr/include/csmith-*/ -w"
+export CFLAGS="-I/usr/include/csmith-2.3.0/ -w"
 export PYTHONPATH=/path/to/pyelftools
 ../../util/csmith-batch.py ../csmith-test.sh
 ```
