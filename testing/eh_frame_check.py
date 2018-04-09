@@ -32,6 +32,8 @@
 import sys
 import re
 import traceback
+import functools
+import signal
 
 import cProfile
 
@@ -366,13 +368,13 @@ def gdb_execute(s, sl=[]):
     """ Execute one or more GDB commands.
         Returns the output of the last one.
     """
-    str = gdb.execute(s, True, True)
+    gdb_out = gdb.execute(s, True, True)
     if sl == []:
-        return str
+        return gdb_out
     else:
         for s in sl:
-            str = gdb.execute(s, True, True)
-        return str
+            gdb_out = gdb.execute(s, True, True)
+        return gdb_out
 
 def gdb_goto_main():
     try:
@@ -905,6 +907,84 @@ def process_pop(status, regname):
         status.pop_cs(regname)
         emitline(str(status))
 
+class MmapEntry:
+    """ A line in the memory map of the process (where does the data at each
+    position of the ELF comes from? Which shared library? etc.) """
+
+    def __init__(self, beg, end, section, path, offset):
+        self.beg = beg
+        self.end = end
+        self.section = section
+        self.path = path
+        self.offset = offset
+
+    def translate(self, ip):
+        return ip - self.beg + self.offset
+
+    def __contains__(self, ip):
+        return self.beg <= ip < self.end
+
+class Mmap(list):
+    """ The full memory map, holding individual memory map rows `MmapEntry` """
+
+    def entry_for(self, ip):
+        """ Find the memory map entry for this ip """
+
+        def bisect(low, high):
+            if low >= high:
+                raise KeyError
+
+            mid = (low + high) // 2
+            mid_val = self[mid]
+
+            if ip < mid_val.beg:
+                return bisect(low, mid)
+            elif ip in mid_val:
+                return mid_val
+            else:
+                return bisect(mid+1, high)
+        return bisect(0, len(self))
+
+
+def get_mmap():
+    """ Processes GDB's `info files` (the process' memory map) """
+
+    def int_of_hex(x):
+        assert(x[:2] == '0x')
+        return int(x[2:], 16)
+
+    infos = gdb.execute('info files', to_string=True)
+
+    entries = Mmap()
+    lines =  infos.split('\n')
+    for line in lines:
+        line = line.strip()
+        words = line.split(' ')
+        if len(words) < 5:
+            continue
+        if words[1] != '-' or words[3] != 'is':
+            continue
+        beg = int_of_hex(words[0])
+        end = int_of_hex(words[2])
+        sec = words[4]
+        path = words[6] if len(words) >= 7 else 'here'
+        offset = 0
+        for pos in range(len(words)):
+            if words[pos] == 'at':
+                offset = int_of_hex(words[pos+1])
+
+        entry = MmapEntry(
+            beg,
+            end,
+            sec,
+            path,
+            offset)
+        entries.append(entry)
+
+    entries.sort(key=lambda x: x.beg)
+
+    return entries
+
 # main
 def main():
     global ARCH
@@ -947,6 +1027,8 @@ def main():
 
         emitline ("INIT: "+ str(status))
 
+        mmap = get_mmap()
+
         # work
         while True:
 
@@ -954,10 +1036,18 @@ def main():
             current_function = get_function_name(symbol_table,
                                                  linked_files, current_ip)
             current_instruction = gdb_get_instruction()
-            emit ("=> %s [%s] (%s %s)" % (format_hex(current_ip),
-                                          current_function,
-                                          current_instruction[0],
-                                          current_instruction[1]))
+            try:
+                mmap_entry = mmap.entry_for(current_ip)
+            except KeyError:
+                emitline("@@ Cannot get mapped region for {}"
+                         .format(format_hex(current_ip)))
+
+            emit ("=> %s (%s) [%s] (%s %s)"
+                  % (format_hex(current_ip),
+                     format_hex(mmap_entry.translate(current_ip)) or '',
+                     current_function,
+                     current_instruction[0],
+                     current_instruction[1]))
 
             current_eh = search_eh_frame_table(eh_frame_table, current_ip)
 
@@ -1077,7 +1167,18 @@ def parse_options():
     #         print ("Unknown option %s" % arg)
 
 
+class Killer:
+    def __init__(self):
+        signal.signal(signal.SIGINT, self.do_quit)
+        signal.signal(signal.SIGTERM, self.do_quit)
+
+    def do_quit(self, sig, frame):
+        print("Got kill signal {}".format(sig))
+        abort()
+
+
 if __name__ == '__main__':
+    killer = Killer()
     try:
         gdb
     except NameError:
