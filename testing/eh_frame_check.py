@@ -31,6 +31,7 @@
 
 import sys
 import re
+from copy import copy
 import traceback
 import functools
 import signal
@@ -647,7 +648,7 @@ class X86_Status:
         #   save or restore operation
         # regname : (saved, saved_address, restored)
         # we consider the epilogue pop to be the one restoring the prologue pushed value
-        self._cs_tracking = {
+        self._cs_tracking_template = {
                 'rbx': (False, 0x0, False),
                 'rbp': (False, 0x0, False),
                 'rdi': (False, 0x0, False),
@@ -658,6 +659,12 @@ class X86_Status:
                 'r14': (False, 0x0, False),
                 'r15': (False, 0x0, False),
         }
+
+        self._cs_tracking = [
+            copy(self._cs_tracking_template),
+            copy(self._cs_tracking_template),
+        ]
+        # ^^^ Twice: we don't call main but return from it
 
     def __str__(self):
         s_ra = ""
@@ -687,10 +694,13 @@ class X86_Status:
 
     def _cs_tracking_str(self, regname):
         msg = '\t'
-        msg += '    saved' if self._cs_tracking[regname][0] else 'not saved'
+        msg += '    saved' if self._cs_tracking[-1][regname][0] else 'not saved'
         msg += ' @ :'
-        msg += 'xxxxxxxxxxxxxx' if self._cs_tracking[regname][1] == 0x0 else str(self._cs_tracking[regname][1])
-        msg += '     restored' if self._cs_tracking[regname][2] else ' not restored'
+        msg += (
+            'xxxxxxxxxxxxxx' if self._cs_tracking[-1][regname][1] == 0x0
+            else str(self._cs_tracking[-1][regname][1]))
+        msg += ('     restored' if self._cs_tracking[-1][regname][2]
+                else ' not restored')
         return msg
 
 
@@ -717,31 +727,33 @@ class X86_Status:
     # checks if it is the first save of the callee-saved register of the function
     #   (in the "prologue")
     def _is_save_relevant(self, regname, address):
-        if self._cs_tracking[regname][0] == False:
-            tupl = (True, address, self._cs_tracking[regname][2])
-            self._cs_tracking[regname] = tupl
+        if self._cs_tracking[-1][regname][0] == False:
+            tupl = (True, address, self._cs_tracking[-1][regname][2])
+            self._cs_tracking[-1][regname] = tupl
             return True
         return False
 
     # checks if it is a restore of a callee-saved register in the epilogue
     #   it does so by checking it restores the value saved in the prologue
     def _is_restore_relevant(self, regname, address):
-        if self._cs_tracking[regname][0] and self._cs_tracking[regname][1] == address:
-            tupl = (self._cs_tracking[regname][0],  self._cs_tracking[regname][1], True)
-            self._cs_tracking[regname] = tupl
+        if self._cs_tracking[-1][regname][0] and self._cs_tracking[-1][regname][1] == address:
+            tupl = (self._cs_tracking[-1][regname][0],  self._cs_tracking[-1][regname][1], True)
+            self._cs_tracking[-1][regname] = tupl
             return True
         return False
 
     def is_reg_restored(self, regname):
-        return self._cs_tracking[regname][2]
+        return self._cs_tracking[-1][regname][2]
 
-    # Upon entering a new function we must reset the register tracking
-    # so that the first pushes will count as prologue.
     def reset_cs_tracking(self):
-        for key in self._cs_tracking:
-            self._cs_tracking[key] = (False, 0x0, False)
-            # => wasn't saved CS-Reg
-            # => wasn't restored CS-Reg
+        ''' Upon entering a new function we must push a new cs_tracking frame
+        to the cs_tracking stack, so that the first pushes will count as
+        prologue. '''
+        self._cs_tracking.append(self._cs_tracking_template)
+
+    def restore_cs_tracking(self):
+        ''' restore a call frame after a return '''
+        self._cs_tracking.pop()
 
     def get_ra(self):
         if self._after_push_rip:
@@ -1079,6 +1091,7 @@ def main():
                 elif current_opcode[:3] == "ret":
                     status.pop_ra()
                     status.purge_restored_cs()
+                    status.restore_cs_tracking()
                     emitline ("RET: "+ str(status))
                     if status.get_ra() == -1:
                         break
