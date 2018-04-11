@@ -1,0 +1,3 @@
+intervaltree==2.1.0
+git+https://github.com/eliben/pyelftools.git
+sortedcontainers==1.5.9
