@@ -29,6 +29,10 @@ In case, the magic incantation to recompile gdb is:
 - ./configure --prefix /usr/local/gdb-python2 --with-python
 - make; make install
 
+To run `eh_frame_check.py` you will require the packages from
+`requirements.txt`. A working example can be found in the `glibc_setup`
+directory.
+
 Invocation
 ----------
 
