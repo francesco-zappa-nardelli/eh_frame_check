@@ -8,7 +8,7 @@ import gzip
 def get_env():
     glibc_base = "glibc/build"
     python_base = None
-    for pdir in os.scandir('venv/lib/'):
+    for pdir in os.scandir('../venv/lib/'):
         if pdir.name.startswith('python'):
             python_base = '{}/site-packages'.format(pdir.path)
     if not python_base:
@@ -63,7 +63,7 @@ def run_single(test_file,
         return s[last_split+1:]
 
     def save_output(content):
-        if not output_file:
+        if not output_file or not content:
             return
         if not os.path.isdir(os.path.dirname(output_file)):
             os.makedirs(os.path.dirname(output_file), exist_ok=True)
@@ -99,11 +99,12 @@ def run_single(test_file,
             env=env,
         )
 
-        if last_line(output.stdout.decode('utf-8')).find('Aborting') != -1:
-            upon_failure(output)
-            return 1
-        elif keep_on_success:
-            save_output(output.stdout)
+        if output_file is not None:
+            if last_line(output.stdout.decode('utf-8')).find('Aborting') != -1:
+                upon_failure(output)
+                return 1
+            elif keep_on_success:
+                save_output(output.stdout)
         return 0
 
     except subprocess.TimeoutExpired as exn:
@@ -121,13 +122,18 @@ def run_single(test_file,
 if __name__ == '__main__':
     argv = sys.argv
     test_file = argv[1]
-    output_dir = argv[2]
+    output_dir = argv[2] if len(argv) > 2 else None
     if not test_file.startswith('glibc'):
         test_file = 'glibc/build/{}'.format(test_file)
-    output_path = os.path.join(
-        output_dir,
-        test_file[len('glibc/build/'):],  # FIXME Not robust at all…
-    )
+
+    if output_dir:
+        output_path = os.path.join(
+            output_dir,
+            test_file[len('glibc/build/'):],  # FIXME Not robust at all…
+        )
+    else:
+        output_path = None
+
     sys.exit(
         run_single(test_file,
                    output_file=output_path,
