@@ -3,6 +3,7 @@ import subprocess
 import os
 import sys
 import gzip
+import threading
 
 
 def get_env():
@@ -62,22 +63,28 @@ def run_single(test_file,
         last_split = s.rfind('\n')
         return s[last_split+1:]
 
-    def save_output(content):
-        if not output_file or not content:
-            return
-        if not os.path.isdir(os.path.dirname(output_file)):
-            os.makedirs(os.path.dirname(output_file), exist_ok=True)
-        output_path = output_file + ('.gz' if compress else '')
-        with (gzip.open if compress else open)(output_path, 'w') as handle:
-            handle.write(content)
-
     def upon_failure(result):
         print("FAILED (exit code {}) test {}{}".format(result.returncode,
                                                        test_file,
                                                        output_file_descr),
               file=sys.stderr)
-        save_output(result.stdout)
 
+    def run_with_outfile(outfile):
+        if not os.path.isdir(os.path.dirname(output_file)):
+            os.makedirs(os.path.dirname(output_file), exist_ok=True)
+        output_path = output_file + ('.gz' if compress else '')
+        result = -1
+        with (gzip.open if compress else open)(output_path, 'w') as handle:
+            result = do_run(lambda line:
+                            handle.write(line.strip().encode('utf-8') + b'\n'))
+
+        if result == 0 and not keep_on_success:
+            os.remove(output_path)
+
+        return result
+
+    def run_without_outfile():
+        return do_run(lambda line: print(line.strip()))
 
     output_file_descr = ''
     if output_file:
@@ -89,34 +96,67 @@ def run_single(test_file,
     args = ['gdb', '-q', '-x', 'gdb_instr', test_file]
     env = get_env()
 
-    try:
-        output = subprocess.run(
-            args,
-            timeout=timeout if timeout != 0 else None,
-            stdout=subprocess.PIPE if output_file else None,
-            stderr=subprocess.STDOUT if output_file else None,
-            check=True,
-            env=env,
-        )
+    had_timeout = False
 
-        if output_file is not None:
-            if last_line(output.stdout.decode('utf-8')).find('Aborting') != -1:
-                upon_failure(output)
+    def upon_timeout(process):
+        nonlocal had_timeout
+        if process.poll() is None:
+            try:
+                process.kill()
+                had_timeout = True
+            except:
+                pass  # Terminated in-between (race condition)
+
+    def do_run(line_action):
+        nonlocal had_timeout
+        try:
+            process = subprocess.Popen(
+                args,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                universal_newlines=True,
+                env=env,
+            )
+
+            if timeout != 0:
+                timer = threading.Timer(timeout, upon_timeout, [process])
+                timer.start()
+            else:
+                timer = None
+
+            has_failed = False
+            for out_line in iter(process.stdout.readline, ''):
+                line_action(out_line)
+                if out_line.find('Aborting') != -1:
+                    has_failed = True
+
+            process.stdout.close()
+            rc = process.wait()
+            if timer:
+                timer.cancel()
+
+            if had_timeout:
+                print("TIMEOUT ({}s) test {}{}".format(timeout,
+                                                       test_file,
+                                                       output_file_descr),
+                      file=sys.stderr)
+                return 2
+            elif has_failed:
+                upon_failure(process)
                 return 1
-            elif keep_on_success:
-                save_output(output.stdout)
-        return 0
+            elif rc != 0:
+                upon_failure(process)
+                return 3
+            return 0
 
-    except subprocess.TimeoutExpired as exn:
-        print("TIMEOUT ({}s) test {}{}".format(timeout,
-                                               test_file,
-                                               output_file_descr),
-              file=sys.stderr)
-        save_output(exn.stdout)
-        return 2
-    except subprocess.CalledProcessError as exn:
-        upon_failure(exn)
-        return 3
+        except subprocess.CalledProcessError as exn:
+            upon_failure(exn)
+            return 3
+
+    if output_file:
+        return run_with_outfile(output_file)
+    else:
+        return run_without_outfile()
 
 
 if __name__ == '__main__':
