@@ -73,6 +73,27 @@ from intervaltree import Interval, IntervalTree
 
 ARCH = '<unknown>'
 
+def cs_eval_func(default_return=None):
+    """ A function returning None that should be executed iff `cs_eval`
+
+    If `cs_eval` is False, the function will return `default_return` instead of
+    executing the wrapped function.
+    """
+
+    def wrapper(fct):
+        @functools.wraps(fct)
+        def wrapping(*args, **kwargs):
+            global cs_eval
+            if not cs_eval:
+                return default_return
+            return fct(*args, **kwargs)
+        return wrapping
+    return wrapper
+
+def cs_eval_effect(func):
+    ''' Same as `cs_eval_func`, but returns None '''
+    return cs_eval_func()(func)
+
 def pyelftools_init():
     global ARCH
     # This should be fixed in get_machine_arch
@@ -672,26 +693,31 @@ class X86_Status:
             s_ra = s_ra + '\'' + format_hex(i) + '\', '
         s_ra = '\n\tRA: ['+s_ra.strip('[]')+'\''+format_hex(self._ra_at)+'\']'
 
-        s_cs = ""
-        if cs_eval:
-            s_cs = "Calle-saved registers\n"
-            i = 0
-            # print(self._cs_stack)
-            for stack in self._cs_stack:
-                regname = self._index_to_name(i)
-                s_reg_info = self._cs_tracking_str(regname)
-                s_stack_cs = ""
-                for e in stack:
-                    if e == 'u':
-                        s_stack_cs = s_stack_cs + '\'u\', '
-                    else:
-                        s_stack_cs = s_stack_cs + '\'' + format_hex(e) + '\', '
-                s_reg_info += '\t' + self._index_to_name(i) + ': ['+(s_stack_cs.strip('[]'))[:(len(s_stack_cs)-2)] +']\n'
-                s_cs = s_cs + s_reg_info
-                i = i + 1
-        res = s_ra+"\n"+s_cs
+        res = "{}\n{}".format(s_ra, self._cs_tracking_strs())
         return res
 
+    @cs_eval_func('')
+    def _cs_tracking_strs(self):
+        s_cs = "Calle-saved registers\n"
+        i = 0
+        # print(self._cs_stack)
+        for stack in self._cs_stack:
+            regname = self._index_to_name(i)
+            s_reg_info = self._cs_tracking_str(regname)
+            s_stack_cs = ""
+            for e in stack:
+                if e == 'u':
+                    s_stack_cs = s_stack_cs + '\'u\', '
+                else:
+                    s_stack_cs = s_stack_cs + '\'' + format_hex(e) + '\', '
+            s_reg_info += '\t{}: [{}]\n'.format(
+                self._index_to_name(i),
+                (s_stack_cs.strip('[]'))[:(len(s_stack_cs)-2)])
+            s_cs = s_cs + s_reg_info
+            i = i + 1
+        return s_cs
+
+    @cs_eval_func('')
     def _cs_tracking_str(self, regname):
         msg = '\t'
         msg += '    saved' if self._cs_tracking[-1][regname][0] else 'not saved'
@@ -726,6 +752,7 @@ class X86_Status:
 
     # checks if it is the first save of the callee-saved register of the function
     #   (in the "prologue")
+    @cs_eval_func(False)
     def _is_save_relevant(self, regname, address):
         if self._cs_tracking[-1][regname][0] == False:
             assert(self._cs_tracking[-1][regname][2] is False)
@@ -736,6 +763,7 @@ class X86_Status:
 
     # checks if it is a restore of a callee-saved register in the epilogue
     #   it does so by checking it restores the value saved in the prologue
+    @cs_eval_func(False)
     def _is_restore_relevant(self, regname, address):
         if (self._cs_tracking[-1][regname][0]
                 and self._cs_tracking[-1][regname][1] == address):
@@ -746,15 +774,18 @@ class X86_Status:
             return True
         return False
 
+    @cs_eval_func(False)
     def is_reg_restored(self, regname):
         return self._cs_tracking[-1][regname][2]
 
+    @cs_eval_effect
     def reset_cs_tracking(self):
         ''' Upon entering a new function we must push a new cs_tracking frame
         to the cs_tracking stack, so that the first pushes will count as
         prologue. '''
         self._cs_tracking.append(self._cs_tracking_template)
 
+    @cs_eval_effect
     def restore_cs_tracking(self):
         ''' restore a call frame after a return '''
         self._cs_tracking.pop()
@@ -780,6 +811,7 @@ class X86_Status:
             self._after_push_rip = False
         self._after_push_rip_count = self._after_push_rip_count - 1
 
+    @cs_eval_func(-1)
     def get_cs(self, regname):
         index = self._name_to_index(regname)
         if len(self._cs_stack[index]) > 1:
@@ -787,6 +819,7 @@ class X86_Status:
         else:
             return -1
 
+    @cs_eval_effect
     def push_cs(self, regname, new_addr):
         if self._is_save_relevant(regname, new_addr):
             index = self._name_to_index(regname)
@@ -795,6 +828,7 @@ class X86_Status:
         else:
             emitline('[IGNORED] PUSH %'+regname+': ')
 
+    @cs_eval_effect
     def pop_cs(self, regname):
         if self._is_restore_relevant(regname, int(str(gdb_get_sp()), 16)):
             index = self._name_to_index(regname)
@@ -803,10 +837,12 @@ class X86_Status:
         else:
             emitline('[IGNORED] POP %'+regname+': ')
 
+    @cs_eval_effect
     def restore_cs(self, regname):
         index = self._name_to_index(regname)
         self._cs_stack[index][-1] = 'u'
 
+    @cs_eval_effect
     def purge_restored_cs(self):
         for i in range(len(self._cs_list)):
             self._cs_stack[i] = [x for x in self._cs_stack[i] if x != 'u']
@@ -828,6 +864,7 @@ class Power_Status:
     def update_ra_addr(self,addr):
         self._ra_at = addr
 
+@cs_eval_func(True)
 def validate_cs_register(structs, entry, status, regnum, regname):
     cs_eh_frame = eval_RegisterRule(structs, entry[regnum], entry['cfa'])
     cs_status = status.get_cs(regname)
@@ -847,6 +884,7 @@ def validate_cs_register(structs, entry, status, regnum, regname):
     return cs_eh_frame == cs_status
 
 
+@cs_eval_func(True)
 def validate_cs_registers(structs, entry, regs_info, status):
     reg_order, ra_regnum = regs_info
     ### Called Saved registers check ###
@@ -900,11 +938,7 @@ def validate_ra(structs, entry, regs_info, status):
 
 
 def validate(structs, entry, regs_info, status):
-    if cs_eval:
-        cs_validation = validate_cs_registers(structs, entry, regs_info, status)
-    else:
-        cs_validation = True
-
+    cs_validation = validate_cs_registers(structs, entry, regs_info, status)
     ra_validation = validate_ra(structs, entry, regs_info, status)
 
     return ra_validation and cs_validation
