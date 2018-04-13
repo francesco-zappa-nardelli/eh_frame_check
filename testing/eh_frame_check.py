@@ -728,7 +728,8 @@ class X86_Status:
     #   (in the "prologue")
     def _is_save_relevant(self, regname, address):
         if self._cs_tracking[-1][regname][0] == False:
-            tupl = (True, address, self._cs_tracking[-1][regname][2])
+            assert(self._cs_tracking[-1][regname][2] is False)
+            tupl = (True, address, False)
             self._cs_tracking[-1][regname] = tupl
             return True
         return False
@@ -736,7 +737,10 @@ class X86_Status:
     # checks if it is a restore of a callee-saved register in the epilogue
     #   it does so by checking it restores the value saved in the prologue
     def _is_restore_relevant(self, regname, address):
-        if self._cs_tracking[-1][regname][0] and self._cs_tracking[-1][regname][1] == address:
+        if (self._cs_tracking[-1][regname][0]
+                and self._cs_tracking[-1][regname][1] == address):
+            assert(not self._cs_tracking[-1][regname[2]])
+
             tupl = (self._cs_tracking[-1][regname][0],  self._cs_tracking[-1][regname][1], True)
             self._cs_tracking[-1][regname] = tupl
             return True
