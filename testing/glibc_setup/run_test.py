@@ -112,6 +112,7 @@ def run_single(test_file,
         try:
             process = subprocess.Popen(
                 args,
+                stdin=subprocess.DEVNULL,  # Force non-interactive mode
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 universal_newlines=True,
