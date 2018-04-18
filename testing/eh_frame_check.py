@@ -390,12 +390,21 @@ def gdb_execute(s, sl=[]):
     """ Execute one or more GDB commands.
         Returns the output of the last one.
     """
-    gdb_out = gdb.execute(s, True, True)
+    try:
+        gdb_out = gdb.execute(s, from_tty=False, to_string=True)
+    except UnicodeDecodeError as e:
+        if s == 'stepi':
+            # We don't need gdb_out, then. Assume the error occurs only on the
+            # post-processing of the command, and it's harmless to ignore it.
+            gdb_out = ''
+        else:
+            raise e
+
     if sl == []:
         return gdb_out
     else:
         for s in sl:
-            gdb_out = gdb.execute(s, True, True)
+            gdb_out = gdb.execute(s, from_tty=False, to_string=True)
         return gdb_out
 
 def gdb_goto_main():
