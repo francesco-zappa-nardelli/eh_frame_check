@@ -376,11 +376,11 @@ def reg_ip():
 
 # gdb interaction
 def gdb_check_and_init():
-    "eh_frame_check requires a gdb linked to Python 2"
+    "eh_frame_check requires a gdb linked to Python"
     if sys.version_info[0] > 3:
         error ("GDB with Python 2 or 3 is required.\n" +
                "Recipe: dowload gdb from http://ftp.gnu.org/gnu/gdb/.\n" +
-               "./configure --prefix /usr/local/gdb-python2 --with-python\n" +
+               "./configure --prefix /usr/local/gdb-python3 --with-python\n" +
                "make; make install")
     gdb_execute('set confirm off')
     gdb_execute('set height unlimited')
@@ -700,28 +700,31 @@ class X86_Status:
         s_ra = ""
         for i in self._ra_stack:
             s_ra = s_ra + '\'' + format_hex(i) + '\', '
-        s_ra = '\n\tRA: ['+s_ra.strip('[]')+'\''+format_hex(self._ra_at)+'\']'
+        s_ra = '\n\tRA     : ['+s_ra.strip('[]')+'\''+format_hex(self._ra_at)+'\']'
 
         res = "{}\n{}".format(s_ra, self._cs_tracking_strs())
         return res
 
     @cs_eval_func('')
     def _cs_tracking_strs(self):
-        s_cs = "Calle-saved registers\n"
+        s_cs = ""
         i = 0
         # print(self._cs_stack)
         for stack in self._cs_stack:
             regname = self._index_to_name(i)
-            s_reg_info = self._cs_tracking_str(regname)
             s_stack_cs = ""
             for e in stack:
                 if e == 'u':
                     s_stack_cs = s_stack_cs + '\'u\', '
                 else:
                     s_stack_cs = s_stack_cs + '\'' + format_hex(e) + '\', '
-            s_reg_info += '\t{}: [{}]\n'.format(
+            s_reg_info = '\t{}({}{}): [{}]\n'.format(
                 self._index_to_name(i),
+                "+" if self._cs_tracking[-1][regname][0] else "-",
+                "+" if self._cs_tracking[-1][regname][2] else "-",
                 (s_stack_cs.strip('[]'))[:(len(s_stack_cs)-2)])
+#            s_reg_info += self._cs_tracking_str(regname)+"\n"
+
             s_cs = s_cs + s_reg_info
             i = i + 1
         return s_cs
@@ -776,7 +779,7 @@ class X86_Status:
     def _is_restore_relevant(self, regname, address):
         if (self._cs_tracking[-1][regname][0]
                 and self._cs_tracking[-1][regname][1] == address):
-            assert(not self._cs_tracking[-1][regname[2]])
+            assert(not self._cs_tracking[-1][regname][2])
 
             tupl = (self._cs_tracking[-1][regname][0],  self._cs_tracking[-1][regname][1], True)
             self._cs_tracking[-1][regname] = tupl
