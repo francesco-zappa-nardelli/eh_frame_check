@@ -117,13 +117,29 @@ def debug_eval(s):
     if dbg_eval:
         print (s)
 
+indent_str = "|.."
+
+def increase_indent():
+    global indent_str
+    indent_str += "|.."
+
+def decrease_indent():
+    global indent_str
+    indent_str = indent_str[3:]
+
 def emit(s):
+    global indent_str
+    if verbose:
+        sys.stdout.write(indent_str+' '+str(s))
+
+def emit_no_prefix(s):
     if verbose:
         sys.stdout.write(str(s))
 
 def emitline(s=''):
+    global indent_str
     if verbose:
-        sys.stdout.write(str(s).rstrip() + '\n')
+        sys.stdout.write(indent_str+' '+str(s).rstrip() + '\n')
 
 def format_hex(addr, fieldsize=None, fullhex=False, lead0x=True, alternate=False):
     """ Format an address into a hexadecimal string.
@@ -298,7 +314,7 @@ def memorize_symbol_table(elffile, symbol_table, file_name, base=0):
                 start = symbol['st_value']+base
                 end = symbol['st_value']+symbol['st_size']+base
                 if end != start:
-                    symbol_table['table'][start:end] = symbol.name
+                    symbol_table['table'][start:end] = symbol.name+"@"+file_name
 
     symbol_table['files'].append(file_name)
 
@@ -311,45 +327,37 @@ def dump_symbol_table(symbol_table):
 
 
 def get_function_name(symbol_table, linked_files, ip):
-    # print ("* looking for "+hex(ip))
+#    print ("*** looking for "+hex(ip))
+#    dump_symbol_table(symbol_table)
     try:
         return symbol_table['table'][ip].pop().data
     except:
         try:
-            lib_name = linked_files[ip].pop().data
+            lib_name = linked_files[ip].pop().data[0]
             if lib_name in symbol_table['files']:
                 return '_unknown @ [{0}]'.format(lib_name)
 
-            lib_base = linked_files[ip].pop().begin
-            print ("* loading symbol table for {0} at {1} ".format(lib_name, hex(lib_base)))
+            lib_section = linked_files[ip].pop().data[1]
             with open(lib_name, 'rb') as f:
-#                print ("* opened")
-                elffile = ELFFile(f)
-#                print ("* got the elfile")
-                memorize_symbol_table(elffile, symbol_table, lib_name, lib_base)
-#                print ("* memorization done")
-#            print ("* file closed")
-#             dump_symbol_table(symbol_table)
+                lib_elffile = ELFFile(f)
+                                
+                # retrieve the offset of the section
+                section = lib_elffile.get_section_by_name(lib_section)
+
+                # compute base
+                lib_base = linked_files[ip].pop().begin - section['sh_offset']
+                print ("* loading symbol table for {0} at {1} ".format(lib_name, hex(lib_base)))
+
+                memorize_symbol_table(lib_elffile, symbol_table, lib_name, lib_base)
+
+#                dump_symbol_table(symbol_table)
             try:
-                return symbol_table[ip].pop().data
+                return symbol_table['table'][ip].pop().data
             except:
                 return '_unknown @ [{0}]'.format(lib_name)
 
         except:
             return '_unknown @ [???]'
-
-
-def get_function_name_OLD(symbol_table, linked_files, ip):
-    try:
-        return symbol_table[ip].pop().data
-    except:
-        try:
-            lib_name = linked_files[ip].pop().data
-            return '_unknown @ '+lib_name
-        except:
-            return '_unknown @ [???]'
-
-
 
 
 # arch specific
@@ -439,7 +447,7 @@ def gdb_dyn_linked_files():
     for l in lines:
         try:
             words = l.split()
-            linked_files[int(words[0],16):int(words[2],16)] = words[6]
+            linked_files[int(words[0],16):int(words[2],16)] = (words[6], words[4])
         except:
             pass
 
@@ -697,16 +705,18 @@ class X86_Status:
         # ^^^ Twice: we don't call main but return from it
 
     def __str__(self):
+        global indent_str
         s_ra = ""
         for i in self._ra_stack:
             s_ra = s_ra + '\'' + format_hex(i) + '\', '
-        s_ra = '\n\tRA     : ['+s_ra.strip('[]')+'\''+format_hex(self._ra_at)+'\']'
+        s_ra = '\tRA     : ['+s_ra.strip('[]')+'\''+format_hex(self._ra_at)+'\']'
 
         res = "{}\n{}".format(s_ra, self._cs_tracking_strs())
         return res
 
     @cs_eval_func('')
     def _cs_tracking_strs(self):
+        global indent_str
         s_cs = ""
         i = 0
         # print(self._cs_stack)
@@ -718,7 +728,7 @@ class X86_Status:
                     s_stack_cs = s_stack_cs + '\'u\', '
                 else:
                     s_stack_cs = s_stack_cs + '\'' + format_hex(e) + '\', '
-            s_reg_info = '\t{}({}{}): [{}]\n'.format(
+            s_reg_info = indent_str+'\t{}({}{}): [{}]\n'.format(
                 self._index_to_name(i),
                 "+" if self._cs_tracking[-1][regname][0] else "-",
                 "+" if self._cs_tracking[-1][regname][2] else "-",
@@ -1077,7 +1087,7 @@ def main():
         linked_files = gdb_dyn_linked_files()
         print ("linked files")
         for f in linked_files:
-            print("{0}-{1}: {2}".format(hex(f.begin), hex(f.end), f.data))
+            print("{0}-{1}: {2} ({3})".format(hex(f.begin), hex(f.end), f.data[0], f.data[1]))
         print ("end linked files")
 
         if ARCH=='x64' or ARCH=='x86':
@@ -1126,9 +1136,9 @@ def main():
                     print (" | eh_frame entry from : "+format_hex(current_eh_frame_entry['pc']) + ' : ' + repr(current_eh))
                     abort()
 
-                emitline ()
+                emit_no_prefix ("\n")
             else:
-                emitline ("  [SKIPPED]")
+                emit_no_prefix ("  [SKIPPED]\n")
 
             current_opcode = current_instruction[0]
 
@@ -1136,13 +1146,17 @@ def main():
                 if current_opcode[:4] == "call":
                     status.push_ra(gdb_get_sp()-8)
                     status.reset_cs_tracking()
-                    emitline ("CALL: "+ str(status))
+                    increase_indent()
+                    emitline ("CALL: ")
+                    emitline (str(status))
 
                 elif current_opcode[:3] == "ret":
                     status.pop_ra()
                     status.purge_restored_cs()
                     status.restore_cs_tracking()
-                    emitline ("RET: "+ str(status))
+                    decrease_indent()
+                    emitline ("RET: ")
+                    emitline (str(status))
                     if status.get_ra() == -1:
                         break
 
@@ -1198,7 +1212,7 @@ def parse_options():
         else:
             verbose = False
     except NameError:
-        verbose = False
+        verbose = True
 
     try:
         if arg_debug:
