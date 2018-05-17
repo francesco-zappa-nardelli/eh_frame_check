@@ -261,7 +261,18 @@ def dump_eh_frame_table(dwarfinfo):
     for entry in dwarfinfo.EH_CFI_entries():
         dump_eh_frame_table_entry(entry)
 
-def memorize_eh_frame_table_entry(eh_frame_table, entry):
+def dump_memorized_eh_frame_table(eh_frame_table):
+    for e in sorted(eh_frame_table):
+        s = (' %-9s' % describe_CFI_CFA_rule(e.data[0]['cfa']))
+        for regnum in e.data[1][0]:
+            if regnum in e.data[0]:
+                s += ('%-6s' % describe_CFI_register_rule(e.data[0][regnum]))
+            else:
+                s += ('%-6s' % 'u')
+
+        print (" {0}-{1}: {2}".format(hex(e.begin), hex(e.end), s))
+
+def memorize_eh_frame_table_entry(eh_frame_table, entry, lib_base):
     decoded_entry = entry.get_decoded()
 
     for line, next_line in zip(decoded_entry.table, decoded_entry.table[1:]+[None]):
@@ -270,25 +281,51 @@ def memorize_eh_frame_table_entry(eh_frame_table, entry):
             top = next_line['pc']
         else:
             top = entry['initial_location'] + entry['address_range']
-        eh_frame_table[base:top] = (line,
-                                    (decoded_entry.reg_order,
-                                     entry.cie['return_address_register']))
+        eh_frame_table[base+lib_base:top+lib_base] = (line,
+                                                      (decoded_entry.reg_order,
+                                                       entry.cie['return_address_register']))
 
-def memorize_eh_frame_table(dwarfinfo):
-    eh_frame_table = IntervalTree()
+def memorize_eh_frame_table(dwarfinfo, eh_frame_table, base=0):
 
+    print("*** memorize_eh_frame_table ***")
+    
     for entry in dwarfinfo.EH_CFI_entries():
         if isinstance(entry, FDE):
-            memorize_eh_frame_table_entry(eh_frame_table, entry)
+            memorize_eh_frame_table_entry(eh_frame_table, entry, base)
 
-    return eh_frame_table
-
-def search_eh_frame_table(eh_frame_table, address):
+    dump_memorized_eh_frame_table(eh_frame_table)
+            
+def search_eh_frame_table(eh_frame_table, linked_files, symbol_table, ip):
     try:
-        return eh_frame_table[address].pop().data
+        return eh_frame_table[ip].pop().data
     except:
-        return None
+        try:
+            lib_name = linked_files[ip].pop().data[0]
+            lib_section = linked_files[ip].pop().data[1]
+            with open(lib_name, 'rb') as f:
+                lib_elffile = ELFFile(f)
+                lib_dwarfinfo = read_eh_frame_table(lib_elffile)
+                # retrieve the offset of the section 
+                section = lib_elffile.get_section_by_name(lib_section)
+                # compute base 
+                lib_base = linked_files[ip].pop().begin - section['sh_offset']
+                
+                print ("\n* importing eh_frame for {0} at {1} ".format(lib_name, hex(lib_base)))
 
+                memorize_eh_frame_table(lib_dwarfinfo, eh_frame_table, lib_base)
+
+            try:
+                return eh_frame_table[ip].pop().data
+            except:
+                print("****** ISSUE A ******")
+                return None
+        except:
+            print("****** ISSUE B ******")
+            raise
+
+
+
+    
 def read_eh_frame_table(elffile):
     """ return the decoded eh_frame_table
     """
@@ -1063,19 +1100,19 @@ def main():
 
     try:
         gdb_check_and_init()
-        symbol_table = IntervalTree()
 
         current_file = gdb_current_file()
 
         symbol_table = { 'table': IntervalTree(), 'files': [] }
-
+        eh_frame_table = IntervalTree()
+        
         with open(current_file, 'rb') as f:
             elffile = ELFFile(f)
             ARCH = elffile.get_machine_arch()
             memorize_symbol_table(elffile, symbol_table, current_file)
             dump_symbol_table(symbol_table)
             dwarfinfo = read_eh_frame_table(elffile)
-            eh_frame_table = memorize_eh_frame_table(dwarfinfo)
+            memorize_eh_frame_table(dwarfinfo, eh_frame_table)
 
         pyelftools_init()
 
@@ -1105,8 +1142,8 @@ def main():
         while True:
 
             current_ip = gdb_get_ip()
-            current_function = get_function_name(symbol_table,
-                                                 linked_files, current_ip)
+            current_function = get_function_name(symbol_table, linked_files,
+                                                 current_ip)
             current_instruction = gdb_get_instruction()
             try:
                 mmap_entry = mmap.entry_for(current_ip)
@@ -1121,7 +1158,8 @@ def main():
                      current_instruction[0],
                      current_instruction[1]))
 
-            current_eh = search_eh_frame_table(eh_frame_table, current_ip)
+            current_eh = search_eh_frame_table(eh_frame_table, linked_files, symbol_table,
+                                               current_ip)
 
             if current_eh != None:
                 current_eh_frame_entry, regs_info = current_eh
@@ -1228,7 +1266,7 @@ def parse_options():
         else:
             cs_eval = False
     except NameError:
-        cs_eval = True
+        cs_eval = False
 
     # for arg in sys.argv:
     #     if arg == "--check-cs":
