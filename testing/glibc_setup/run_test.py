@@ -15,20 +15,23 @@ def get_env():
     if not python_base:
         raise Exception("No virtualenv found in venv")
 
+    lib_path_list = [
+        "{glibc}",
+        "{glibc}/math",
+        "{glibc}/elf",
+        "{glibc}/dlfcn",
+        "{glibc}/nss",
+        "{glibc}/nis",
+        "{glibc}/rt",
+        "{glibc}/resolv",
+        "{glibc}/crypt",
+        "{glibc}/mathvec",
+        "{glibc}/support",
+        "{glibc}/nptl",
+    ]
+
     out = {
-        'LIB_PATH': (
-            "{glibc}"
-            + "{glibc}/math"
-            + "{glibc}/elf"
-            + "{glibc}/dlfcn"
-            + "{glibc}/nss"
-            + "{glibc}/nis"
-            + "{glibc}/rt"
-            + "{glibc}/resolv"
-            + "{glibc}/crypt"
-            + "{glibc}/mathvec"
-            + "{glibc}/support"
-            + "{glibc}/nptl").format(glibc=glibc_base),
+        'LIB_PATH': ':'.join(lib_path_list).format(glibc=glibc_base),
         'GCONV_PATH': '{}/iconvdata'.format(glibc_base),
         'LOCPATH': '{}/localedata'.format(glibc_base),
         'LC_ALL': 'C',
