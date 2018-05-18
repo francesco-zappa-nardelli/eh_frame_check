@@ -281,6 +281,9 @@ def memorize_eh_frame_table_entry(eh_frame_table, entry, lib_base):
             top = next_line['pc']
         else:
             top = entry['initial_location'] + entry['address_range']
+        if base == top:
+            print("Warning: empty Interval at base: "+hex(base)+"  top: "+hex(top))
+            return
         eh_frame_table[base+lib_base:top+lib_base] = (line,
                                                       (decoded_entry.reg_order,
                                                        entry.cie['return_address_register']))
@@ -293,14 +296,18 @@ def memorize_eh_frame_table(dwarfinfo, eh_frame_table, base=0):
         if isinstance(entry, FDE):
             memorize_eh_frame_table_entry(eh_frame_table, entry, base)
 
-    dump_memorized_eh_frame_table(eh_frame_table)
+#    dump_memorized_eh_frame_table(eh_frame_table)
             
 def search_eh_frame_table(eh_frame_table, linked_files, symbol_table, ip):
     try:
         return eh_frame_table[ip].pop().data
     except:
         try:
-            lib_name = linked_files[ip].pop().data[0]
+            try:
+                lib_name = linked_files[ip].pop().data[0]
+            except:
+                print("Warning: cannot determine lib_name for ip: "+str(ip))
+                return None
             lib_section = linked_files[ip].pop().data[1]
             with open(lib_name, 'rb') as f:
                 lib_elffile = ELFFile(f)
