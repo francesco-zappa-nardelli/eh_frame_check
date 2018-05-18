@@ -107,9 +107,27 @@ def run_single(test_file,
             except:
                 pass  # Terminated in-between (race condition)
 
+    def gen_replication_command():
+        ''' Generates the exact command line to input to replicate this run '''
+        def escape_arg(arg):
+            if ' ' in arg:
+                arg = "'{}'".format(arg.replace("'", r"\'"))
+            return arg
+        command = ' '.join(list(map(escape_arg, args)))
+
+        env_list = []
+        for env_var in env:
+            env_list.append('{}={}'.format(env_var, env[env_var]))
+
+        return '{} {}'.format(' '.join(env_list), command)
+
     def do_run(line_action):
         nonlocal had_timeout
         try:
+            line_action("## Running command:")
+            line_action("##    {}".format(gen_replication_command()))
+            line_action("")
+
             process = subprocess.Popen(
                 args,
                 stdin=subprocess.DEVNULL,  # Force non-interactive mode
