@@ -12,7 +12,12 @@ DEFAULT_OUTPUT_DIR := outputs/$(shell date +%F_%H-%M-%S)
 
 all: $(TESTS_SUFFIX)
 
-.PHONY: %.test
+.PHONY: %.test %.test.stdout
 %.test: %
 	@echo "$<…"
 	@bash -c 'python3 ./run_test.py "$<" "$(OUTPUT_DIR)" || true'
+
+
+%.test.stdout: %
+	@echo "$<…"
+	@bash -c 'python3 ./run_test.py "$<" || true'
