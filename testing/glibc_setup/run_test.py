@@ -32,6 +32,8 @@ def get_env():
 
     out = {
         'LIB_PATH': ':'.join(lib_path_list).format(glibc=glibc_base),
+        # ^^^ No idea what this does, but it was present in the original
+        # `make test` glibc Makefile. Kept in doubt.
         'GCONV_PATH': '{}/iconvdata'.format(glibc_base),
         'LOCPATH': '{}/localedata'.format(glibc_base),
         'LC_ALL': 'C',
