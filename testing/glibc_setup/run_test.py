@@ -75,9 +75,12 @@ def run_single(test_file,
               file=sys.stderr)
 
     def run_with_outfile(outfile):
-        if not os.path.isdir(os.path.dirname(output_file)):
-            os.makedirs(os.path.dirname(output_file), exist_ok=True)
-        output_path = output_file + ('.gz' if compress else '')
+        def suffix_gz_path(path):
+            return path + ('.gz' if compress else '')
+
+        if not os.path.isdir(os.path.dirname(outfile)):
+            os.makedirs(os.path.dirname(outfile), exist_ok=True)
+        output_path = suffix_gz_path(outfile)
         result = -1
         with (gzip.open if compress else open)(output_path, 'w') as handle:
             result = do_run(lambda line:
@@ -85,6 +88,8 @@ def run_single(test_file,
 
         if result == 0 and not keep_on_success:
             os.remove(output_path)
+        elif result == 2:  # Timeout
+            os.rename(output_path, suffix_gz_path(outfile + '.timeout'))
 
         return result
 
