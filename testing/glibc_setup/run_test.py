@@ -83,6 +83,14 @@ def run_single(test_file,
                                                        output_file_descr),
               file=sys.stderr)
 
+    def log_test_result(outcome_type):
+        ''' Append a line to `output_dir/outcome_type` containing
+        `test_file`, to keep a short record of how each test ended up '''
+
+        if output_dir is not None:
+            with open(os.path.join(output_dir, outcome_type), 'a') as handle:
+                handle.write(test_file.strip() + '\n')
+
     def run_with_outfile(outfile):
         def suffix_gz_path(path):
             return path + ('.gz' if compress else '')
@@ -207,9 +215,19 @@ def run_single(test_file,
             return 3
 
     if output_file:
-        return run_with_outfile(output_file)
+        outcome = run_with_outfile(output_file)
     else:
-        return run_without_outfile()
+        outcome = run_without_outfile()
+
+    log_test_result(
+        {
+            0: '_SUCCESS',
+            1: '_FAILURES',
+            2: '_TIMEOUTS',
+            3: '_GDB_FAILURES',
+        }[outcome])
+
+    return outcome
 
 
 def parse_args():
