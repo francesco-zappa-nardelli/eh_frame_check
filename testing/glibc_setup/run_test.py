@@ -1,9 +1,17 @@
 #!/usr/bin/env python3
+import argparse
 import subprocess
 import os
 import sys
 import gzip
 import threading
+
+
+class KeepPolicy:
+    """ Carries what log files are kept after a run """
+    def __init__(self, on_success=False, on_timeout=False):
+        self.on_success = on_success
+        self.on_timeout = on_timeout
 
 
 def get_env():
@@ -44,10 +52,11 @@ def get_env():
 
 
 def run_single(test_file,
+               output_dir=None,
                output_file=None,
                timeout=600,  # seconds = 10min
                compress=False,
-               keep_on_success=False):
+               keep_policy=None):
     """ Run a single test file.
 
     If `output_file` is None, the output of the program are printed directly;
@@ -78,23 +87,38 @@ def run_single(test_file,
         def suffix_gz_path(path):
             return path + ('.gz' if compress else '')
 
+        def open_file(path, compress):
+            if compress:
+                return gzip.open(path, 'w')
+            return open(path, 'bw')
+
         if not os.path.isdir(os.path.dirname(outfile)):
             os.makedirs(os.path.dirname(outfile), exist_ok=True)
         output_path = suffix_gz_path(outfile)
         result = -1
-        with (gzip.open if compress else open)(output_path, 'w') as handle:
+        with open_file(output_path, compress) as handle:
             result = do_run(lambda line:
                             handle.write(line.strip().encode('utf-8') + b'\n'))
 
-        if result == 0 and not keep_on_success:
-            os.remove(output_path)
+        do_remove = False
+        if result == 0 and not keep_policy.on_success:
+            do_remove = True
         elif result == 2:  # Timeout
-            os.rename(output_path, suffix_gz_path(outfile + '.timeout'))
+            if keep_policy.on_timeout:
+                os.rename(output_path, suffix_gz_path(outfile + '.timeout'))
+            else:
+                do_remove = True
+
+        if do_remove:
+            os.remove(output_path)
 
         return result
 
     def run_without_outfile():
         return do_run(lambda line: print(line.strip()))
+
+    if keep_policy is None:
+        keep_policy = KeepPolicy()
 
     output_file_descr = ''
     if output_file:
@@ -188,10 +212,47 @@ def run_single(test_file,
         return run_without_outfile()
 
 
-if __name__ == '__main__':
-    argv = sys.argv
-    test_file = argv[1]
-    output_dir = argv[2] if len(argv) > 2 else None
+def parse_args():
+    ''' parse command-line arguments '''
+    parser = argparse.ArgumentParser(
+        description="Painlessly run a test case from the glibc test suite",
+    )
+
+    parser.add_argument('--timeout', default='600',
+                        help=("Timeout duration, in seconds, before the "
+                              "process gets killed. 0 for no timeout."))
+    parser.add_argument('--keep-on-success', action='store_true',
+                        help=("Keep the log file of runs that exited "
+                              "successfully."))
+    parser.add_argument('--keep-on-timeout', action='store_true',
+                        help=("Keep the log file of runs that exited with a "
+                              "timeout."))
+    parser.add_argument('--keep-all', action='store_true',
+                        help=("Keep the log file of all runs (timeout, "
+                              "error, success). By default, only errors are "
+                              "kept."))
+
+    parser.add_argument('--no-compress', '-Z', action='store_false',
+                        dest='compress',
+                        help=("Do not gzip the log files (default: gzip)"))
+
+    parser.add_argument('--output', '-o', default=None,
+                        help=("Output directory for the log file. If omitted, "
+                              "the output is directly printed on the standard "
+                              "output."))
+    parser.add_argument('test_file', metavar='test path',
+                        help=("The file to be run. The prefix `glibc/build` "
+                              "can be safely omitted."))
+
+    return parser.parse_args()
+
+
+def main():
+    ''' Main function, called upon script invocation '''
+    args = parse_args()
+
+    test_file = args.test_file
+    output_dir = args.output
     if not test_file.startswith('glibc'):
         test_file = 'glibc/build/{}'.format(test_file)
 
@@ -203,7 +264,20 @@ if __name__ == '__main__':
     else:
         output_path = None
 
+    keep = KeepPolicy(
+        on_success=args.keep_on_success or args.keep_all,
+        on_timeout=args.keep_on_timeout or args.keep_all,
+    )
+
     sys.exit(
         run_single(test_file,
+                   output_dir=output_dir,
                    output_file=output_path,
-                   compress=True))
+                   timeout=int(args.timeout),
+                   keep_policy=keep,
+                   compress=args.compress)
+    )
+
+
+if __name__ == '__main__':
+    main()
